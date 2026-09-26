@@ -11,8 +11,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 )
 
-// PWA - Registra Service Worker para virar app no Chrome
-if ('serviceWorker' in navigator) {
+// PWA - Só registra em PRODUÇÃO (Vercel), não no localhost:5173
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then(reg => console.log('PWA Geoclima Vale registrado:', reg.scope))
