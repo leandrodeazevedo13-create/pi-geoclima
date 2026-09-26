@@ -1,0 +1,22 @@
+{
+  "name": "Geoclima Vale - 39 Municipios - Vale do Paraiba e Litoral Norte",
+  "short_name": "Geoclima Vale",
+  "description": "Mapa colaborativo alagamentos e deslizamentos - 39 municipios - GPS automatico - PWA",
+  "theme_color": "#2563eb",
+  "background_color": "#0f172a",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
