@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { db } from "./lib/firebase";
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
 
 type Categoria = "Água/Chuva" | "Terra/Encosta" | "Vento/Tempo" | "Infra Urbana";
 type Tipo = { simples: string; tecnico: string; emoji: string; categoria: Categoria; risco: string; };
@@ -18,29 +20,29 @@ const COORDS: Record<string, [number, number]> = {
 const TIPOS: Tipo[] = [
   { simples: "Rua alagada agora", tecnico: "Alagamento", emoji: "🚫", categoria: "Água/Chuva", risco: "Chuva intensa + mare alta" },
   { simples: "Enxurrada forte", tecnico: "Enxurrada", emoji: "🌊", categoria: "Água/Chuva", risco: "Chuva >30mm/h" },
-  { simples: "Rio transbordou", tecnico: "Inundação fluvial", emoji: "🏞️", categoria: "Água/Chuva", risco: "Chuva 72h" },
+  { simples: "Rio transbordou", tecnico: "Inundação fluvial", emoji: "🏞", categoria: "Água/Chuva", risco: "Chuva 72h" },
   { simples: "Mar avançou / ressaca", tecnico: "Ressaca", emoji: "🌊", categoria: "Água/Chuva", risco: "Mare alta + ressaca" },
-  { simples: "Bueiro entupido", tecnico: "Bueiro obstruido", emoji: "🕳️", categoria: "Infra Urbana", risco: "Falta manutencao" },
+  { simples: "Bueiro entupido", tecnico: "Bueiro obstruido", emoji: "🕳", categoria: "Infra Urbana", risco: "Falta manutencao" },
   { simples: "Rua que sempre alaga", tecnico: "Galeria subdimensionada", emoji: "💧", categoria: "Infra Urbana", risco: "Drenagem insuficiente" },
-  { simples: "Barro desceu", tecnico: "Deslizamento", emoji: "⛰️", categoria: "Terra/Encosta", risco: "Chuva + solo encharcado" },
-  { simples: "Barranco rachou", tecnico: "Risco deslizamento", emoji: "⚠️", categoria: "Terra/Encosta", risco: "Infiltracao" },
-  { simples: "Erosão buraco", tecnico: "Erosão", emoji: "🕳️", categoria: "Terra/Encosta", risco: "Solo exposto" },
+  { simples: "Barro desceu", tecnico: "Deslizamento", emoji: "⛰", categoria: "Terra/Encosta", risco: "Chuva + solo encharcado" },
+  { simples: "Barranco rachou", tecnico: "Risco deslizamento", emoji: "⚠", categoria: "Terra/Encosta", risco: "Infiltracao" },
+  { simples: "Erosão buraco", tecnico: "Erosão", emoji: "🕳", categoria: "Terra/Encosta", risco: "Solo exposto" },
   { simples: "Muro caiu", tecnico: "Colapso contencao", emoji: "🧱", categoria: "Terra/Encosta", risco: "Saturacao solo" },
   { simples: "Árvore caiu", tecnico: "Queda de arvore", emoji: "🌳", categoria: "Vento/Tempo", risco: "Vento + solo" },
   { simples: "Vento destelhou", tecnico: "Vendaval", emoji: "💨", categoria: "Vento/Tempo", risco: "Rajada >60km/h" },
   { simples: "Raio caiu", tecnico: "Descarga eletrica", emoji: "⚡", categoria: "Vento/Tempo", risco: "Tempestade eletrica" },
   { simples: "Granizo", tecnico: "Granizo", emoji: "🧊", categoria: "Vento/Tempo", risco: "Cumulonimbus" },
-  { simples: "Lixo entulho", tecnico: "Acumulo residuos", emoji: "🗑️", categoria: "Infra Urbana", risco: "Obstrucao" },
+  { simples: "Lixo entulho", tecnico: "Acumulo residuos", emoji: "🗑", categoria: "Infra Urbana", risco: "Obstrucao" },
   { simples: "Mato alto", tecnico: "Vegetacao", emoji: "🌿", categoria: "Infra Urbana", risco: "Falta rocada" },
   { simples: "Obra atrapalhando", tecnico: "Obra irregular", emoji: "🚧", categoria: "Infra Urbana", risco: "Antropica" },
 ];
 
-type Ponto = { id: number; lat: number; lng: number; municipio: string; bairro: string; rua: string; tipo: Tipo; qtd: number; freq: "Alta" | "Média" | "Baixa"; statusRua: "Livre" | "Alagada" | "Interditada" | "Risco"; foto?: string; obs?: string; quando: string; };
+type Ponto = { id: string | number; lat: number; lng: number; municipio: string; bairro: string; rua: string; tipo: Tipo; qtd: number; freq: "Alta" | "Média" | "Baixa"; statusRua: "Livre" | "Alagada" | "Interditada" | "Risco"; foto?: string; obs?: string; quando: string; };
 
 const INICIAL: Ponto[] = [
-  { id: 1, lat: -23.4342, lng: -45.0835, municipio: "Ubatuba", bairro: "Centro", rua: "Hans Staden, 345", tipo: TIPOS[0], qtd: 12, freq: "Alta", quando: "Ontem 18h", statusRua: "Interditada" },
-  { id: 2, lat: -23.62, lng: -45.4125, municipio: "Caraguatatuba", bairro: "Martim de Sá", rua: "Av. da Praia, 100", tipo: TIPOS[3], qtd: 8, freq: "Alta", quando: "Hoje 06h", statusRua: "Alagada" },
-  { id: 3, lat: -23.1791, lng: -45.8869, municipio: "São José dos Campos", bairro: "Vila Industrial", rua: "Rua Paraibuna, 200", tipo: TIPOS[4], qtd: 15, freq: "Alta", quando: "Hoje 07h", statusRua: "Alagada" },
+  { id: "inicial-1", lat: -23.4342, lng: -45.0835, municipio: "Ubatuba", bairro: "Centro", rua: "Hans Staden, 345", tipo: TIPOS[0], qtd: 12, freq: "Alta", quando: "Ontem 18h", statusRua: "Interditada" },
+  { id: "inicial-2", lat: -23.62, lng: -45.4125, municipio: "Caraguatatuba", bairro: "Martim de Sá", rua: "Av. da Praia, 100", tipo: TIPOS[3], qtd: 8, freq: "Alta", quando: "Hoje 06h", statusRua: "Alagada" },
+  { id: "inicial-3", lat: -23.1791, lng: -45.8869, municipio: "São José dos Campos", bairro: "Vila Industrial", rua: "Rua Paraibuna, 200", tipo: TIPOS[4], qtd: 15, freq: "Alta", quando: "Hoje 07h", statusRua: "Alagada" },
 ];
 
 function BarraAcessibilidade({ fontSize, setFontSize, highContrast, setHighContrast }: any) {
@@ -76,7 +78,7 @@ function BarraAcessibilidade({ fontSize, setFontSize, highContrast, setHighContr
                 <button onClick={() => setFontSize((s: number) => Math.min(150, s + 10))} className={`bg-white rounded-xl p-4 border text-left ${fontSize > 100 ? "border-orange-500 bg-orange-50" : ""}`}><div className="text-[28px] font-black">A+</div><div className="text-[12px] font-bold">Tamanho fonte {fontSize}%</div></button>
                 <button onClick={() => setFontSize(100)} className="bg-white rounded-xl p-4 border text-left"><div className="text-[24px]">A</div><div className="text-[12px] font-bold">Fonte normal</div></button>
                 <button onClick={() => setHighContrast(!highContrast)} className={`bg-white rounded-xl p-4 border text-left ${highContrast ? "border-orange-500 bg-orange-50" : ""}`}><div className="text-[22px]">◐</div><div className="text-[12px] font-bold">Contraste</div></button>
-                <button onClick={() => { const u = new SpeechSynthesisUtterance("Geoclima Vale, 39 municípios, Vale do Paraíba e Litoral Norte. Mapa com alfinete azul."); u.lang="pt-BR"; speechSynthesis.speak(u); }} className="bg-white rounded-xl p-4 border text-left"><div className="text-[22px]">🗣️</div><div className="text-[12px] font-bold">Leitor de sites</div></button>
+                <button onClick={() => { const u = new SpeechSynthesisUtterance("Geoclima Vale, 39 municípios, Vale do Paraíba e Litoral Norte. Mapa com alfinete azul."); u.lang="pt-BR"; speechSynthesis.speak(u); }} className="bg-white rounded-xl p-4 border text-left"><div className="text-[22px]">🗣</div><div className="text-[12px] font-bold">Leitor de sites</div></button>
               </div>
               <div className="bg-white rounded-xl p-3 border text-[11px]"><div className="font-black">📲 PWA - Virar App</div><div className="text-[10px] mt-1">No Chrome celular: menu ⋮ → Adicionar à tela inicial → Instalar. Funciona offline!</div></div>
               <button onClick={() => { setFontSize(100); setHighContrast(false); }} className="w-full bg-[#d35400] text-white rounded-full py-3 font-bold">↺ Restaurar</button>
@@ -93,16 +95,13 @@ export default function App() {
   const mapRef = useRef<L.Map | null>(null);
   const mapDiv = useRef<HTMLDivElement>(null);
   const userLocationRef = useRef<L.Marker | null>(null);
-  const [pontos, setPontos] = useState<Ponto[]>(() => {
-    try { const s = localStorage.getItem("geoclima_rmvale_39"); if (s) return JSON.parse(s).map((p: any) => ({ ...p, tipo: TIPOS.find(t => t.tecnico === p.tipo?.tecnico) || TIPOS[0] })); } catch {}
-    return INICIAL;
-  });
+  const [pontos, setPontos] = useState<Ponto[]>(INICIAL);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [enderecoAuto, setEnderecoAuto] = useState<string>("");
   const [carregandoEndereco, setCarregandoEndereco] = useState(false);
   const [tipoSel, setTipoSel] = useState<Tipo>(TIPOS[0]);
-  const [rua, setRua] = useState(""); // agora auto-preenchido, editável
+  const [rua, setRua] = useState("");
   const [bairro, setBairro] = useState("Centro");
   const [municipio, setMunicipio] = useState("Ubatuba");
   const [municipioFiltro, setMunicipioFiltro] = useState("Todos");
@@ -116,13 +115,11 @@ export default function App() {
   const [gpsStatus, setGpsStatus] = useState<"buscando" | "ok" | "erro">("buscando");
   const [pwaInstallPrompt, setPwaInstallPrompt] = useState<any>(null);
 
-  // PWA install prompt
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e: any) => {
       e.preventDefault();
       setPwaInstallPrompt(e);
     });
-    // Registrar Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').then(() => console.log('SW registrado')).catch(() => {});
     }
@@ -140,7 +137,6 @@ export default function App() {
     }
   };
 
-  // Reverse geocoding - endereço automático pelo alfinete
   const buscarEndereco = async (lat: number, lng: number) => {
     setCarregandoEndereco(true);
     try {
@@ -156,7 +152,6 @@ export default function App() {
       setEnderecoAuto(data.display_name || "");
       setRua(ruaAuto);
       if (bairroAuto) setBairro(bairroAuto);
-      // Tenta achar município nos 39
       if (municipioAuto) {
         const match = MUNICIPIOS_RMVALE.find(m => municipioAuto.toLowerCase().includes(m.toLowerCase()) || m.toLowerCase().includes(municipioAuto.toLowerCase()));
         if (match) setMunicipio(match);
@@ -168,7 +163,38 @@ export default function App() {
     setCarregandoEndereco(false);
   };
 
-  useEffect(() => { localStorage.setItem("geoclima_rmvale_39", JSON.stringify(pontos)); }, [pontos]);
+  // FIREBASE: OUVE BD AO VIVO - EDITOR QUE VOCÊ QUERIA
+  useEffect(() => {
+    const q = query(collection(db, "ocorrencias"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      const docsFirebase: Ponto[] = snap.docs.map(d => {
+        const data = d.data() as any;
+        const tipoObj = TIPOS.find(t => t.tecnico === data.tipo_tecnico) || TIPOS.find(t => t.simples === data.tipo_simples) || TIPOS[0];
+        return {
+          id: d.id,
+          lat: data.lat,
+          lng: data.lng,
+          municipio: data.municipio,
+          bairro: data.bairro || "Centro",
+          rua: data.rua,
+          tipo: tipoObj,
+          qtd: data.qtd || 1,
+          freq: data.freq || "Baixa",
+          statusRua: data.statusRua || "Alagada",
+          foto: data.foto,
+          obs: data.obs || "",
+          quando: data.quando || "Agora",
+        };
+      });
+      // Junta iniciais + Firebase (remove duplicatas por id)
+      setPontos(prev => {
+        const idsFirebase = new Set(docsFirebase.map(d=>d.id));
+        const iniciaisNaoDuplicadas = INICIAL.filter(p => !idsFirebase.has(p.id as any));
+        return [...docsFirebase, ...iniciaisNaoDuplicadas];
+      });
+    });
+    return () => unsub();
+  }, []);
 
   const filtrados = useMemo(() => {
     let l = [...pontos];
@@ -178,7 +204,6 @@ export default function App() {
     return l;
   }, [pontos, filtroCat, filtroStatus, municipioFiltro]);
 
-  // Inicializa mapa + GEOLOCALIZAÇÃO AUTOMÁTICA
   useEffect(() => {
     if (!mapDiv.current || mapRef.current) return;
     const map = L.map(mapDiv.current, { zoomControl: false }).setView([-23.3, -45.5], 9.5);
@@ -191,7 +216,6 @@ export default function App() {
       buscarEndereco(c.lat, c.lng);
     });
 
-    // GEOLOCALIZAÇÃO - FIXA NA LOCALIZAÇÃO ATUAL AO ENTRAR
     if (navigator.geolocation) {
       setGpsStatus("buscando");
       navigator.geolocation.getCurrentPosition(
@@ -200,23 +224,18 @@ export default function App() {
           setUserCoords(c);
           setGpsStatus("ok");
           map.setView([c.lat, c.lng], 15);
-          
-          // Marca azul de localização atual do usuário
           const userIcon = L.divIcon({
             html: `<div style="position:relative"><div style="background:#4285F4;width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div><div style="position:absolute;top:-6px;left:-6px;width:30px;height:30px;background:rgba(66,133,244,0.2);border-radius:50%;animation:pulse 2s infinite"></div></div><style>@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(2);opacity:0}}</style>`,
             iconSize: [18, 18], iconAnchor: [9, 9], className: ""
           });
           if (userLocationRef.current) map.removeLayer(userLocationRef.current);
           userLocationRef.current = L.marker([c.lat, c.lng], { icon: userIcon } as any).addTo(map).bindPopup("📍 Você está aqui - localização atual");
-          
-          // Já coloca alfinete na localização atual também
           setCoords(c);
           buscarEndereco(c.lat, c.lng);
         },
         (err) => {
           console.log("GPS erro:", err);
           setGpsStatus("erro");
-          // Mantém visão geral do Vale se não permitir GPS
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
       );
@@ -227,7 +246,6 @@ export default function App() {
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
-  // Botão "Minha localização"
   const centralizarNoUsuario = () => {
     if (userCoords && mapRef.current) {
       mapRef.current.setView([userCoords.lat, userCoords.lng], 16);
@@ -253,12 +271,10 @@ export default function App() {
     if (!mapRef.current) return;
     mapRef.current.eachLayer((layer: any) => { 
       if (layer instanceof L.Marker && layer !== userLocationRef.current) {
-        // Não remove o marcador de usuário
         const isUserMarker = layer === userLocationRef.current;
         if (!isUserMarker) mapRef.current?.removeLayer(layer);
       }
     });
-    // Re-adiciona marcador de usuário se existir
     if (userLocationRef.current && userCoords) {
       userLocationRef.current.addTo(mapRef.current!);
     }
@@ -271,7 +287,7 @@ export default function App() {
       });
       const m = L.marker([p.lat, p.lng], { icon } as any).addTo(mapRef.current!);
       const fotoHtml = p.foto ? `<br/><img src="${p.foto}" style="width:200px;border-radius:8px;margin-top:6px"/>` : "";
-      m.bindPopup(`<b>${p.municipio} - ${p.rua}</b><br/>${p.bairro} • ${p.statusRua} • ${p.tipo.categoria}<br/>Causa: ${p.tipo.risco}<br/>${p.qtd} conf • ${p.freq} 90d • ${p.tipo.tecnico}${fotoHtml}`);
+      m.bindPopup(`<b>${p.municipio} - ${p.rua}</b><br/>${p.bairro} • ${p.statusRua} • ${p.tipo.categoria}<br/>Causa: ${p.tipo.risco}<br/>${p.qtd} conf • ${p.freq} 90d • ${p.tipo.tecnico}${fotoHtml}<br/><small>${p.obs || ""}</small>`);
     });
     if (coords) {
       const pinIcon = L.divIcon({
@@ -298,14 +314,36 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  const salvar = () => {
+  const salvar = async () => {
     if (!coords) { alert("Toque no mapa ou use 'Minha localização' para colocar alfinete azul 📍"); return; }
-    // Rua agora é opcional porque já vem automático, mas pode editar
     const ruaFinal = rua.trim() || enderecoAuto || `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`;
-    const novo: Ponto = { id: Date.now(), lat: coords.lat, lng: coords.lng, municipio, bairro, rua: ruaFinal, tipo: tipoSel, qtd: 1, freq: "Baixa", quando: "Agora", statusRua, foto, obs };
-    setPontos(prev => [novo, ...prev]);
-    setRua(""); setObs(""); setFoto(undefined); setCoords(null); setEnderecoAuto("");
-    alert(`✅ Registrado em ${municipio} - ${ruaFinal}! Endereço automático pelo alfinete.`);
+    
+    try {
+      await addDoc(collection(db, "ocorrencias"), {
+        lat: coords.lat,
+        lng: coords.lng,
+        municipio,
+        bairro,
+        rua: ruaFinal,
+        endereco_completo: enderecoAuto,
+        tipo_simples: tipoSel.simples,
+        tipo_tecnico: tipoSel.tecnico,
+        categoria: tipoSel.categoria,
+        emoji: tipoSel.emoji,
+        risco: tipoSel.risco,
+        statusRua,
+        foto: foto || null,
+        obs: obs || "",
+        qtd: 1,
+        freq: "Baixa",
+        quando: new Date().toLocaleString("pt-BR"),
+        createdAt: serverTimestamp(),
+      });
+      setRua(""); setObs(""); setFoto(undefined); setCoords(null); setEnderecoAuto("");
+      alert(`✅ Enviado pro Firebase! Já aparece no editor do Firebase > Firestore > ocorrencias e no mural de todos em tempo real! ${municipio} - ${ruaFinal}`);
+    } catch (e: any) {
+      alert("Erro Firebase: " + e.message);
+    }
   };
 
   return (
@@ -316,6 +354,7 @@ export default function App() {
         <div className="flex gap-10 animate-[marquee_40s_linear_infinite]">
           <span>📍 GPS: Mapa já abre na sua localização • </span>
           <span>📲 PWA: Instale como app pelo Chrome • </span>
+          <span>🔥 FIREBASE AO VIVO: Editor na tabelinha + mural compartilhado 39 municípios • </span>
           <span>📝 Endereço automático pelo alfinete - edite se precisar • </span>
           <span>ALERTA INMET: Vale do Paraíba e Litoral Norte - 39 municípios • </span>
         </div>
@@ -326,8 +365,8 @@ export default function App() {
         <div className="flex items-center gap-2">
           <div className="bg-black text-white w-8 h-8 rounded-lg flex items-center justify-center font-black text-[11px]">GC</div>
           <div>
-            <h1 className="font-black text-[13px] leading-tight">GEOCLIMA VALE - 39 MUNICÍPIOS - GPS + PWA</h1>
-            <p className="text-[10px] text-gray-500">📍 Auto GPS • 📲 PWA App • 📝 Endereço auto • VLibras • Alfinete azul</p>
+            <h1 className="font-black text-[13px] leading-tight">GEOCLIMA VALE - 39 MUNICÍPIOS - FIREBASE + GPS + PWA</h1>
+            <p className="text-[10px] text-gray-500">🔥 Firebase ao vivo • 📍 Auto GPS • 📲 PWA App • 📝 Endereço auto • VLibras</p>
           </div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
@@ -345,12 +384,12 @@ export default function App() {
       <main id="conteudo" className="grid grid-cols-1 lg:grid-cols-[380px_1fr_380px] h-[calc(100vh-88px)]">
         <section className={`${highContrast ? "bg-black" : "bg-white"} border-r flex flex-col order-2 lg:order-1 overflow-auto`}>
           <div className={`${highContrast ? "bg-white text-black" : "bg-[#0f172a] text-white"} p-4 border-b`}>
-            <h2 className="font-black text-[12px] tracking-widest">📤 ENVIAR - GPS + ENDEREÇO AUTOMÁTICO</h2>
-            <p className="text-[11px] mt-1 opacity-70">📍 Mapa já abre onde você está • Endereço vem automático do alfinete • Edite se precisar</p>
+            <h2 className="font-black text-[12px] tracking-widest">📤 ENVIAR - FIREBASE + ENDEREÇO AUTOMÁTICO</h2>
+            <p className="text-[11px] mt-1 opacity-70">🔥 Salva no Firebase + editor tabelinha • 📍 Mapa já abre onde você está • Endereço auto</p>
             <div className="mt-2 flex gap-2 flex-wrap">
-              <span className="text-[10px] bg-green-600 text-white px-2 py-1 rounded-full font-bold">📍 GPS automático ao abrir</span>
-              <span className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded-full font-bold">📝 Rua auto pelo alfinete</span>
-              <span className="text-[10px] bg-black text-white px-2 py-1 rounded-full font-bold">📲 PWA instalável</span>
+              <span className="text-[10px] bg-orange-600 text-white px-2 py-1 rounded-full font-bold">🔥 Firebase ao vivo</span>
+              <span className="text-[10px] bg-green-600 text-white px-2 py-1 rounded-full font-bold">📍 GPS automático</span>
+              <span className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded-full font-bold">📝 Rua auto</span>
             </div>
           </div>
           <div className="p-4 space-y-3">
@@ -371,9 +410,9 @@ export default function App() {
               <select value={filtroCat} onChange={e => setFiltroCat(e.target.value as any)} className="w-full border rounded-xl p-2.5 text-[12px] mt-1 font-bold">
                 <option value="Todas">Todas (17)</option>
                 <option value="Água/Chuva">💧 Água/Chuva (4)</option>
-                <option value="Terra/Encosta">⛰️ Terra/Encosta (4)</option>
+                <option value="Terra/Encosta">⛰ Terra/Encosta (4)</option>
                 <option value="Vento/Tempo">💨 Vento/Tempo (4)</option>
-                <option value="Infra Urbana">🏙️ Infra (5)</option>
+                <option value="Infra Urbana">🏙 Infra (5)</option>
               </select>
             </div>
 
@@ -386,7 +425,6 @@ export default function App() {
               </select>
             </div>
 
-            {/* ENDEREÇO AUTOMÁTICO - NOVO */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
               <label className="text-[10px] font-black text-blue-900">📍 ENDEREÇO AUTOMÁTICO PELO ALFINETE - EDITE SE PRECISAR</label>
               <div className="mt-2">
@@ -396,11 +434,11 @@ export default function App() {
                   <button onClick={() => { if(coords) buscarEndereco(coords.lat, coords.lng); }} className="bg-blue-600 text-white px-3 py-2 rounded-xl text-[10px] font-bold">🔄 Atualizar</button>
                 </div>
                 {enderecoAuto && <div className="text-[9px] text-gray-500 mt-1 bg-white rounded-full px-2 py-1">Completo: {enderecoAuto.substring(0,100)}...</div>}
-                <div className="text-[9px] text-blue-700 mt-1">💡 Dica: Arraste o alfinete azul no mapa que o endereço atualiza sozinho. Deixe vazio que usa GPS.</div>
+                <div className="text-[9px] text-blue-700 mt-1">💡 Dica: Arraste o alfinete azul no mapa que o endereço atualiza sozinho.</div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
                 <div><label className="text-[9px] font-bold">Bairro (auto)</label><input value={bairro} onChange={e => setBairro(e.target.value)} className="w-full border rounded-xl p-2.5 text-[11px] mt-1 bg-white" /></div>
-                <div><label className="text-[9px] font-bold">Status</label><select value={statusRua} onChange={e => setStatusRua(e.target.value as any)} className="w-full border rounded-xl p-2.5 text-[11px] mt-1 bg-white"><option value="Interditada">🚫 Interditada</option><option value="Alagada">🌊 Alagada</option><option value="Risco">⚠️ Risco</option><option value="Livre">✅ Livre</option></select></div>
+                <div><label className="text-[9px] font-bold">Status</label><select value={statusRua} onChange={e => setStatusRua(e.target.value as any)} className="w-full border rounded-xl p-2.5 text-[11px] mt-1 bg-white"><option value="Interditada">🚫 Interditada</option><option value="Alagada">🌊 Alagada</option><option value="Risco">⚠ Risco</option><option value="Livre">✅ Livre</option></select></div>
               </div>
             </div>
 
@@ -415,21 +453,22 @@ export default function App() {
 
             <div><label className="text-[10px] font-bold">Obs - opcional</label><textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex: água 30cm, maré 1.8m, rajada 60km/h - opcional" className="w-full border rounded-xl p-2.5 text-[12px] h-14 mt-1" /></div>
 
-            <button onClick={salvar} className="w-full bg-red-600 text-white rounded-full py-3.5 text-[13px] font-black">🚨 CONFIRMAR - {municipio} - {rua ? rua.substring(0,20) : "Alfinete"}</button>
-            <div className="text-[9px] text-center text-gray-400">📍 GPS automático • 📝 Endereço auto pelo alfinete • ✏️ Editável • 📲 PWA</div>
+            <button onClick={salvar} className="w-full bg-orange-600 text-white rounded-full py-3.5 text-[13px] font-black">🔥 SALVAR NO FIREBASE - {municipio} - {rua ? rua.substring(0,20) : "Alfinete"}</button>
+            <div className="text-[9px] text-center text-gray-400">🔥 Firebase editor • 📍 GPS auto • 📝 Endereço auto • 📲 PWA</div>
           </div>
         </section>
 
         <section className="order-1 lg:order-2 bg-white flex flex-col min-h-[500px]">
-          <div className="px-3 py-2 border-b flex gap-2 text-[10px] font-bold bg-blue-50 flex-wrap items-center">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-pulse"></span>ALFINETE AZUL - ENDEREÇO AUTO</span>
+          <div className="px-3 py-2 border-b flex gap-2 text-[10px] font-bold bg-orange-50 flex-wrap items-center">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-orange-600 rounded-full animate-pulse"></span>FIREBASE AO VIVO</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-600 rounded-full"></span>ALFINETE AZUL</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-[#4285F4] rounded-full border-2 border-white"></span>VOCÊ AQUI</span>
             <button onClick={centralizarNoUsuario} className="ml-auto bg-blue-600 text-white px-3 py-1 rounded-full text-[10px] font-black">📍 Minha localização</button>
-            <span className="text-[9px] bg-green-100 text-green-800 px-2 py-1 rounded-full">{gpsStatus==="ok" ? "GPS ativo" : gpsStatus==="buscando" ? "Buscando GPS..." : "GPS desativado"}</span>
+            <span className="text-[9px] bg-green-100 text-green-800 px-2 py-1 rounded-full">{gpsStatus==="ok" ? "GPS ativo" : gpsStatus==="buscando" ? "Buscando..." : "GPS off"}</span>
           </div>
-          <div ref={mapDiv} className="flex-1 bg-gray-100 min-h-[400px]" role="application" tabIndex={0} aria-label="Mapa com GPS automático" />
+          <div ref={mapDiv} className="flex-1 bg-gray-100 min-h-[400px]" role="application" tabIndex={0} aria-label="Mapa com Firebase" />
           <div className="px-3 py-2 bg-[#0f172a] text-white text-[10px] flex justify-between font-bold flex-wrap gap-1">
-            <span>🗺️ GPS automático ao abrir • 📍 Alfinete azul arrastável → endereço auto • 📲 PWA instalável</span>
+            <span>🔥 Firebase ao vivo • 📍 Alfinete arrastável → endereço auto • 39 municípios</span>
             <span className="bg-white/20 px-2 py-0.5 rounded-full">{coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : "Sem alfinete"}</span>
           </div>
         </section>
@@ -441,14 +480,14 @@ export default function App() {
               <button onClick={() => setFiltroStatus("agora")} className={`flex-1 py-2 rounded-full text-[11px] font-black ${filtroStatus === "agora" ? "bg-red-600 text-white" : "bg-red-50 text-red-600 border"}`}>🚨 Agora • {filtrados.filter(p => p.statusRua !== "Livre").length}</button>
             </div>
             <div className="bg-black text-white rounded-xl p-3">
-              <div className="text-[10px] text-white/60 font-black">RMVale - {municipioFiltro==="Todos" ? "39 MUNICÍPIOS - GPS + PWA" : municipioFiltro.toUpperCase()}</div>
+              <div className="text-[10px] text-white/60 font-black">RMVale - {municipioFiltro==="Todos" ? "39 MUNICÍPIOS - FIREBASE" : municipioFiltro.toUpperCase()}</div>
               <div className="text-[16px] font-black">{filtrados.filter(p => p.statusRua !== "Livre").length} ruas com problema</div>
-              <div className="text-[11px] text-white/70">{filtrados.reduce((a, b) => a + b.qtd, 0)} conf 90d • Endereço auto • GPS</div>
+              <div className="text-[11px] text-white/70">{filtrados.reduce((a, b) => a + b.qtd, 0)} conf 90d • Firebase ao vivo</div>
             </div>
           </div>
           <div className="flex-1 overflow-auto p-3 space-y-2">
             {filtrados.map(p => (
-              <div key={p.id} onClick={() => mapRef.current?.setView([p.lat, p.lng], 14)} className={`bg-white border rounded-2xl p-3 cursor-pointer hover:border-black ${p.statusRua !== "Livre" ? "border-red-200" : ""}`}>
+              <div key={String(p.id)} onClick={() => mapRef.current?.setView([p.lat, p.lng], 14)} className={`bg-white border rounded-2xl p-3 cursor-pointer hover:border-black ${p.statusRua !== "Livre" ? "border-red-200" : ""}`}>
                 <div className="flex justify-between">
                   <div className="flex gap-2">
                     <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">{p.tipo.emoji}</div>
