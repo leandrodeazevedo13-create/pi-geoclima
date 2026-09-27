@@ -202,7 +202,15 @@ export default function App() {
   useEffect(() => {
     if (!mapDiv.current) return;
     if (mapRef.current) { try { mapRef.current.remove(); } catch {} mapRef.current = null; }
-    const map = L.map(mapDiv.current, { zoomControl: false, preferCanvas: true }).setView([-23.3, -45.5], 9.5);
+    const isMobile = window.innerWidth < 1024;
+    const map = L.map(mapDiv.current, { 
+      zoomControl: false, 
+      preferCanvas: true,
+      dragging: true,
+      tap: true,
+      scrollWheelZoom: false, // FIX CELULAR: não rouba scroll da página
+      doubleClickZoom: !isMobile,
+    }).setView([-23.3, -45.5], 9.5);
     mapRef.current = map;
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -321,8 +329,9 @@ export default function App() {
       </div>
 
       {tab==="usuario" ? (
-      <main id="conteudo" className="grid grid-cols-1 lg:grid-cols-[380px_1fr_380px] h-[calc(100vh-124px)]">
-        <section className={`${highContrast ? "bg-black" : "bg-white"} border-r flex flex-col order-2 lg:order-1 overflow-auto`}>
+      <main id="conteudo" className="grid grid-cols-1 lg:grid-cols-[380px_1fr_380px] lg:h-[calc(100vh-124px)] auto-rows-auto lg:auto-rows-fr">
+        {/* FORM - NO CELULAR VEM PRIMEIRO (order-1) NO PC CONTINUA ESQUERDA (lg:order-1) */}
+        <section className={`${highContrast ? "bg-black" : "bg-white"} border-r flex flex-col order-1 lg:order-1 overflow-visible lg:overflow-auto lg:h-full`} id="form-ocorrencia">
           <div className={`${highContrast ? "bg-white text-black" : "bg-[#0f172a] text-white"} p-4 border-b`}>
             <h2 className="font-black text-[12px] tracking-widest">REGISTRAR OCORRÊNCIA</h2>
             <p className="text-[11px] mt-1 opacity-70">Toque no mapa para escolher o local • Endereço preenchido automático</p>
@@ -361,17 +370,20 @@ export default function App() {
             <button onClick={salvar} className="w-full bg-orange-600 text-white rounded-full py-3.5 text-[13px] font-black">Registrar ocorrência - {municipio}</button>
           </div>
         </section>
-        <section className="order-1 lg:order-2 bg-white flex flex-col min-h-[500px]">
+        <section className="order-2 lg:order-2 bg-white flex flex-col min-h-[380px] lg:min-h-[500px] h-[45vh] lg:h-auto relative">
           <div className="px-3 py-2 border-b flex gap-2 text-[10px] font-bold bg-gray-50 flex-wrap items-center">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-orange-600 rounded-full animate-pulse"></span>{filtrados.length} ocorrências</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-blue-600 rounded-full"></span>Novo local</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-[#4285F4] rounded-full border-2 border-white"></span>Você aqui</span>
             <button onClick={centralizarNoUsuario} className="ml-auto bg-blue-600 text-white px-3 py-1 rounded-full text-[10px] font-black">Minha localização</button>
           </div>
-          <div ref={mapDiv} className="flex-1 bg-gray-100 min-h-[400px]" role="application" tabIndex={0} aria-label="Mapa RMVale 39 municípios" />
+          {/* MAPA MOBILE: altura fixa 45vh + trava de scroll para não roubar o scroll da página */}
+          <div ref={mapDiv} className="flex-1 bg-gray-100 min-h-[380px] lg:min-h-[400px] h-[45vh] lg:h-auto touch-pan-y" role="application" tabIndex={0} aria-label="Mapa RMVale 39 municípios" />
           <div className="px-3 py-2 bg-[#0f172a] text-white text-[10px] flex justify-between font-bold flex-wrap gap-1"><span>Vale do Paraíba e Litoral Norte • 39 municípios</span><span className="bg-white/20 px-2 py-0.5 rounded-full">{coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : "Toque no mapa"}</span></div>
+          {/* BOTÃO FLUTUANTE MOBILE PARA REGISTRAR - RESOLVE FORM QUE NÃO APARECE */}
+          <button onClick={()=>{ document.getElementById('form-ocorrencia')?.scrollIntoView({behavior:'smooth'}); }} className="lg:hidden absolute bottom-16 right-4 z-[500] bg-orange-600 text-white w-14 h-14 rounded-full shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center text-2xl font-black border-2 border-white">+</button>
         </section>
-        <section className="order-3 bg-[#fcfcfc] border-l flex flex-col">
+        <section className="order-3 lg:order-3 bg-[#fcfcfc] border-l flex flex-col overflow-visible lg:overflow-auto lg:h-full">
           <div className="p-3 border-b bg-white"><div className="flex gap-2 mb-2"><button onClick={() => setFiltroStatus("todos")} className={`flex-1 py-2 rounded-full text-[11px] font-black ${filtroStatus === "todos" ? "bg-black text-white" : "bg-gray-100"}`}>Todos • {filtrados.length}</button><button onClick={() => setFiltroStatus("agora")} className={`flex-1 py-2 rounded-full text-[11px] font-black ${filtroStatus === "agora" ? "bg-red-600 text-white" : "bg-red-50 text-red-600 border"}`}>Atenção • {filtrados.filter(p => p.statusRua !== "Livre").length}</button></div><div className="bg-black text-white rounded-xl p-3"><div className="text-[10px] text-white/60 font-black">RMVALE - {municipioFiltro==="Todos" ? "39 MUNICÍPIOS" : municipioFiltro.toUpperCase()}</div><div className="text-[16px] font-black">{filtrados.filter(p => p.statusRua !== "Livre").length} ruas com ocorrência</div><div className="text-[11px] text-white/70">{filtrados.reduce((a, b) => a + b.qtd, 0)} registros • Últimos 90 dias</div></div></div>
           <div className="flex-1 overflow-auto p-3 space-y-2">{filtrados.map(p => (<div key={String(p.id)} onClick={() => mapRef.current?.setView([p.lat, p.lng], 14)} className={`bg-white border rounded-2xl p-3 cursor-pointer hover:border-black ${p.statusRua !== "Livre" ? "border-red-200" : ""}`}><div className="flex justify-between"><div className="flex gap-2"><div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">{p.tipo.emoji}</div><div><div className="font-black text-[12px]">{p.municipio} - {p.rua}</div><div className="text-[10px] text-gray-500">{p.bairro} • {p.tipo.categoria}</div></div></div><span className={`text-[8px] px-2 py-1 rounded-full font-black h-fit ${p.statusRua === "Interditada" ? "bg-red-600 text-white" : p.statusRua === "Risco" ? "bg-red-800 text-white" : p.statusRua === "Alagada" ? "bg-orange-500 text-white" : "bg-gray-100"}`}>{p.statusRua}</span></div>{p.foto && <img src={p.foto} alt={`Foto ${p.rua}`} className="w-full h-28 object-cover rounded-xl mt-2" />}<div className="mt-2 flex gap-2 flex-wrap"><span className="text-[10px] bg-black text-white px-2 py-1 rounded-full font-bold">{p.tipo.simples}</span><span className="text-[9px] text-gray-500">{p.qtd} registros</span></div></div>))}</div>
         </section>
