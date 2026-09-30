@@ -1,8 +1,10 @@
+
 import { useEffect, useRef, useState, useMemo } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { db } from "./lib/firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
+import Painel from "./Painel";
 
 type ViewMode = "mapa" | "mural" | "noticias" | "historico";
 type Tipo = { simples: string; tecnico: string; emoji: string; categoria: string; risco: "atenção" | "cuidado" | "crítico"; };
@@ -38,7 +40,7 @@ function getTrianguloIcon(risco: "atenção" | "cuidado" | "crítico", qtd: numb
   return L.divIcon({ html: `<div style="position:relative; width:36px; height:36px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));"><svg width="36" height="36" viewBox="0 0 36 36"><polygon points="18,2 34,32 2,32" fill="${cor}" stroke="black" stroke-width="2" stroke-linejoin="round"/><text x="18" y="26" text-anchor="middle" font-size="16" font-weight="900" fill="black">!</text></svg><div style="position:absolute; bottom:-6px; left:50%; transform:translateX(-50%); background:black; color:white; font-size:9px; font-weight:900; padding:1px 4px; border-radius:10px;">${qtd}x</div></div>`, iconSize: [36,36], iconAnchor:[18,32] });
 }
 
-export default function App() {
+function UsuarioView(){
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
   const [pontos, setPontos] = useState<Ponto[]>(INICIAL);
   const [municipioFiltro, setMunicipioFiltro] = useState("Todos - 39");
@@ -52,13 +54,16 @@ export default function App() {
   const [altoContraste, setAltoContraste] = useState(false);
   const [fonteGrande, setFonteGrande] = useState(false);
   const [showAcess, setShowAcess] = useState(false);
+  const [autoCarrossel, setAutoCarrossel] = useState(true);
+  const [pontoSelecionadoMapa, setPontoSelecionadoMapa] = useState<{lat:number,lng:number} | null>(null);
+  const [marcadorTemp, setMarcadorTemp] = useState<L.Marker | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const [noticiasOficiais] = useState<any[]>([
-    { fonte: "CEMADEN", titulo: "Alerta: Chuva moderada em Ubatuba e Caraguá nas próximas 2h", cor: "bg-red-600", desc: "Acumulado previsto 30mm. Atenção moradores de áreas de encosta.", time: "Há 2h" },
-    { fonte: "Defesa Civil SP", titulo: "Maré alta + ressaca - Litoral Norte em atenção", cor: "bg-orange-500", desc: "Ondas de até 2.5m. Evitem áreas de praia.", time: "Há 5h" },
-    { fonte: "INMET", titulo: "Acumulado 45mm em SJC nas últimas 24h - Fonte: GOES-16", cor: "bg-blue-600", desc: "Previsão de mais chuva nas próximas horas.", time: "Hoje 06h" },
+    { fonte: "CEMADEN", titulo: "Alerta: Chuva moderada em Ubatuba e Caraguá nas próximas 2h", cor: "bg-red-600", desc: "Acumulado previsto 30mm. Atenção moradores de áreas de encosta.", time: "Há 2h", data: "29/09/2026", hora: "20:30", dataHora: "29/09/2026 20:30" },
+    { fonte: "Defesa Civil SP", titulo: "Maré alta + ressaca - Litoral Norte em atenção", cor: "bg-orange-500", desc: "Ondas de até 2.5m. Evitem áreas de praia.", time: "Há 5h", data: "29/09/2026", hora: "17:15", dataHora: "29/09/2026 17:15" },
+    { fonte: "INMET", titulo: "Acumulado 45mm em SJC nas últimas 24h - Fonte: GOES-16", cor: "bg-blue-600", desc: "Previsão de mais chuva nas próximas horas.", time: "Hoje 06h", data: "29/09/2026", hora: "06:00", dataHora: "29/09/2026 06:00" },
   ]);
 
   function falar(texto: string){ if(!("speechSynthesis" in window)) return; window.speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(texto); u.lang="pt-BR"; u.rate=0.9; window.speechSynthesis.speak(u); }
@@ -75,19 +80,36 @@ export default function App() {
     return ()=>unsub();
   }, []);
 
-  // MAPA FIXO - ZOOM 15 (ANTES 17 MUITO PERTO, AGORA UM POUCO MAIS LONGE)
+  useEffect(()=>{
+    if(!autoCarrossel) return;
+    const iv = setInterval(()=>{
+      setViewMode(prev => prev==="mapa"?"mural": prev==="mural"?"noticias": prev==="noticias"?"historico":"mapa");
+    }, 10000);
+    return ()=> clearInterval(iv);
+  }, [autoCarrossel]);
+
   useEffect(()=>{
     if(!mapContainerRef.current || mapRef.current) return;
     const map = L.map(mapContainerRef.current, { center: [-23.4342,-45.0835], zoom: 15, zoomControl:false });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"© OpenStreetMap" }).addTo(map);
-    markersRef.current = L.layerGroup().addTo(map); mapRef.current = map;
+    markersRef.current = L.layerGroup().addTo(map); 
+    mapRef.current = map;
+    map.on('click', (e:any)=>{
+      const lat = e.latlng.lat; const lng = e.latlng.lng;
+      setPontoSelecionadoMapa({lat,lng});
+      setAutoCarrossel(false);
+      if(marcadorTemp){ map.removeLayer(marcadorTemp); }
+      const tempIcon = L.divIcon({ html: `<div style="width:18px;height:18px;background:#0ea5e9;border:3px solid white;border-radius:50%;box-shadow:0 0 0 8px rgba(14,165,233,0.3)"></div>`, iconSize:[18,18], iconAnchor:[9,9] });
+      const m = L.marker([lat,lng], {icon: tempIcon}).addTo(map).bindPopup(`<b>📍 Local selecionado</b><br/>${lat.toFixed(5)}, ${lng.toFixed(5)}<br/><span style="font-size:10px">Esse ponto será usado no envio</span>`).openPopup();
+      setMarcadorTemp(m as any);
+    });
     if(navigator.geolocation){ navigator.geolocation.getCurrentPosition(pos=> map.setView([pos.coords.latitude, pos.coords.longitude], 15), ()=> map.setView([INICIAL[0].lat, INICIAL[0].lng], 15)); }
     return ()=>{ map.remove(); mapRef.current=null; };
   }, []);
+
   useEffect(()=>{ if(viewMode==="mapa" && mapRef.current){ setTimeout(()=>{ mapRef.current?.invalidateSize(); }, 250); } }, [viewMode]);
 
   const filtrados = useMemo(()=> pontos.filter(p=> municipioFiltro==="Todos - 39"||municipioFiltro==="Todos"||p.municipio===municipioFiltro), [pontos,municipioFiltro]);
-
   useEffect(()=>{
     if(!markersRef.current) return; markersRef.current.clearLayers();
     filtrados.forEach(p=>{
@@ -102,24 +124,31 @@ export default function App() {
 
   async function handleEnviar(e: React.FormEvent){
     e.preventDefault(); if(!formRua||!formBairro){ alert("Preencha bairro e rua"); return; }
-    const coords=COORDS[formMunicipio]||[-23.4342,-45.0835]; const lat=coords[0]+(Math.random()-0.5)*0.02; const lng=coords[1]+(Math.random()-0.5)*0.02;
-    try{ await addDoc(collection(db,"ocorrencias"),{lat,lng,municipio:formMunicipio,bairro:formBairro,rua:formRua,tipoIdx:formTipoIdx,qtd:1,statusRua:formStatus,statusMod:"pendente",foto:formFoto,obs:formObs,quando:new Date().toLocaleString("pt-BR"),createdAt:serverTimestamp()}); alert("✅ Enviado para moderação CEMADEN!"); setFormBairro(""); setFormRua(""); setFormObs(""); setFormFoto(null); }catch(err:any){ alert(err.message); }
+    let lat:number, lng:number;
+    if(pontoSelecionadoMapa){ lat = pontoSelecionadoMapa.lat; lng = pontoSelecionadoMapa.lng; }
+    else { const coords=COORDS[formMunicipio]||[-23.4342,-45.0835]; lat=coords[0]+(Math.random()-0.5)*0.005; lng=coords[1]+(Math.random()-0.5)*0.005; }
+    try{ 
+      await addDoc(collection(db,"ocorrencias"),{lat,lng,municipio:formMunicipio,bairro:formBairro,rua:formRua,tipoIdx:formTipoIdx,qtd:1,statusRua:formStatus,statusMod:"pendente",foto:formFoto,obs:formObs,quando:new Date().toLocaleString("pt-BR"),createdAt:serverTimestamp()}); 
+      alert(`✅ Enviado para moderação CEMADEN! Local fixado: ${lat.toFixed(5)}, ${lng.toFixed(5)}`); 
+      setFormBairro(""); setFormRua(""); setFormObs(""); setFormFoto(null); setPontoSelecionadoMapa(null);
+      if(marcadorTemp && mapRef.current){ mapRef.current.removeLayer(marcadorTemp); setMarcadorTemp(null); }
+    }catch(err:any){ alert(err.message); }
   }
   function handleFoto(e: React.ChangeEvent<HTMLInputElement>){ const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>setFormFoto(r.result as string); r.readAsDataURL(f); }
 
   return (
     <div className={`${fonteGrande?"text-[18px]":""} ${altoContraste?"bg-black text-yellow-300":"bg-[#f8fafc] text-slate-900"} min-h-screen font-sans pb-[90px] md:pb-0`}>
-      <div className="bg-red-600 text-white font-bold overflow-hidden" style={{height:'32px'}}><style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}.animate-marquee{animation:marquee 30s linear infinite; white-space:nowrap; display:flex; gap:2rem; align-items:center; height:32px;}`}</style><div className="animate-marquee text-[12px]">{[...noticiasOficiais,...noticiasOficiais].map((n,i)=><span key={i} className="flex items-center gap-2"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[10px]`}>{n.fonte}</span>{n.titulo}</span>)}</div></div>
+      <div className="bg-red-600 text-white font-bold overflow-hidden" style={{height:'32px'}}><style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}.animate-marquee{animation:marquee 30s linear infinite; white-space:nowrap; display:flex; gap:2rem; align-items:center; height:32px;}`}</style><div className="animate-marquee text-[12px]">{[...noticiasOficiais,...noticiasOficiais].map((n,i)=><span key={i} className="flex items-center gap-2"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[10px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora}</span>)}</div></div>
+      
       <header className={`${altoContraste?"bg-black border-yellow-300 border-b":"bg-white border-b"} sticky top-0 z-40`}>
-        <div className="max-w-[1440px] mx-auto px-4 py-2 flex justify-between items-center"><div className="text-[10px] opacity-60">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua</div><div className="flex gap-2"><select value={municipioFiltro} onChange={e=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[12px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map(m=><option key={m}>{m}</option>)}</select><button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-4 py-1 rounded-full text-[12px] font-bold">Minha localização</button><a href="/painel" className="bg-black text-white px-4 py-1 rounded-full text-[12px] font-bold hidden md:block">Painel ADM</a></div></div>
-        <div className="flex gap-2 px-4 pb-2"><span className="px-4 py-1.5 rounded-full text-[12px] font-bold bg-black text-white">Mapa Colaborativo</span><span className="text-[10px] opacity-60 py-1.5">Morador - só aprovados com descrição</span></div>
+        <div className="max-w-[1440px] mx-auto px-4 py-2 flex justify-between items-center"><div className="text-[10px] opacity-60">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua • {pontoSelecionadoMapa?`📍 Fixado: ${pontoSelecionadoMapa.lat.toFixed(4)}, ${pontoSelecionadoMapa.lng.toFixed(4)}`:"Clique no mapa para fixar local"}</div><div className="flex gap-2"><select value={municipioFiltro} onChange={e=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[12px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map(m=><option key={m}>{m}</option>)}</select><button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-4 py-1 rounded-full text-[12px] font-bold">Minha localização</button><button onClick={()=>{ window.history.pushState({},'', '/painel'); window.dispatchEvent(new Event('popstate')); }} className="bg-black text-white px-4 py-1 rounded-full text-[12px] font-bold hidden md:block">Painel ADM</button></div></div>
+        <div className="flex gap-2 px-4 pb-2"><span className="px-4 py-1.5 rounded-full text-[12px] font-bold bg-black text-white">Mapa Colaborativo</span><span className="text-[10px] opacity-60 py-1.5">Morador - só aprovados com descrição {pontoSelecionadoMapa?"- 📍 Local fixado no mapa":"- clique no mapa para fixar"}</span></div>
       </header>
 
       <main className="grid md:grid-cols-[380px_1fr_360px] gap-3 p-3 max-w-[1440px] mx-auto">
-        {/* ESQUERDA - SEM HISTÓRICO AGORA */}
         <section className={`${altoContraste?"bg-black border-yellow-300 border":"bg-white border"} rounded-2xl p-4 h-fit sticky top-[100px]`}>
           <h2 className="font-black text-[12px] uppercase">REGISTRAR OCORRÊNCIA - ACESSÍVEL A TODOS</h2>
-          <p className="text-[11px] opacity-60 mt-1">Descreva em áudio 🎤 ou texto - vai para moderação</p>
+          <p className="text-[11px] opacity-60 mt-1">Clique no mapa para fixar o endereço exato antes de enviar</p>
           <form onSubmit={handleEnviar} className="mt-4 space-y-3">
             <select value={formMunicipio} onChange={e=>setFormMunicipio(e.target.value)} className="w-full border rounded-xl px-3 py-2 text-[12px] bg-white text-black">{MUNICIPIOS_RMVALE.map(m=><option key={m}>{m}</option>)}</select>
             <input value={formBairro} onChange={e=>setFormBairro(e.target.value)} placeholder="Bairro (ex: Centro)" className="w-full border rounded-xl px-3 py-2 text-[12px] bg-white text-black"/>
@@ -127,33 +156,31 @@ export default function App() {
             <select value={formTipoIdx} onChange={e=>setFormTipoIdx(Number(e.target.value))} className="w-full border rounded-xl px-3 py-2 text-[12px] bg-white text-black font-bold">{TIPOS.map((t,i)=><option key={i} value={i}>{t.emoji} {t.simples} - {t.risco.toUpperCase()}</option>)}</select>
             <select value={formStatus} onChange={e=>setFormStatus(e.target.value as any)} className="w-full border rounded-xl px-3 py-2 text-[12px] bg-white text-black"><option>Alagada</option><option>Interditada</option><option>Risco</option><option>Livre</option></select>
             <div className="relative"><textarea value={formObs} onChange={e=>setFormObs(e.target.value)} placeholder="Descreva a ocorrência... (vai aparecer nos aprovados)" className="w-full border rounded-xl px-3 py-2 text-[12px] min-h-[90px] bg-white text-black" /><button type="button" onClick={()=>{ const rec = new (window as any).webkitSpeechRecognition(); rec.lang="pt-BR"; rec.onresult=(ev:any)=>setFormObs(ev.results[0][0].transcript); rec.start(); }} className="absolute bottom-2 right-2 bg-black text-white w-8 h-8 rounded-full">🎤</button></div>
-            <div className="space-y-2"><div className="text-[11px] font-bold">Foto prova (opcional)</div><div className="flex gap-2"><label className="flex-1 bg-blue-600 text-white text-[11px] font-bold py-2 rounded-full text-center cursor-pointer">📷 Câmera<input type="file" accept="image/*" capture="environment" onChange={handleFoto} className="hidden"/></label><label className="flex-1 bg-gray-900 text-white text-[11px] font-bold py-2 rounded-full text-center cursor-pointer">🖼 Galeria<input type="file" accept="image/*" onChange={handleFoto} className="hidden"/></label></div>{formFoto && <img src={formFoto} className="w-full h-32 object-cover rounded-xl border" onError={e=>{(e.target as any).style.display='none'}}/>}</div>
-            <button type="submit" className="w-full bg-black text-white py-3 rounded-full font-black text-[12px]">Registrar - {formMunicipio} (moderação)</button>
+            <div className="space-y-2"><div className="text-[11px] font-bold">Foto prova (opcional) {pontoSelecionadoMapa && <span className="text-green-600">- 📍 Local fixado</span>}</div><div className="flex gap-2"><label className="flex-1 bg-blue-600 text-white text-[11px] font-bold py-2 rounded-full text-center cursor-pointer">📷 Câmera<input type="file" accept="image/*" capture="environment" onChange={handleFoto} className="hidden"/></label><label className="flex-1 bg-gray-900 text-white text-[11px] font-bold py-2 rounded-full text-center cursor-pointer">🖼 Galeria<input type="file" accept="image/*" onChange={handleFoto} className="hidden"/></label></div>{formFoto && <img src={formFoto} className="w-full h-32 object-cover rounded-xl border" onError={e=>{(e.target as any).style.display='none'}}/>}</div>
+            <button type="submit" className="w-full bg-black text-white py-3 rounded-full font-black text-[12px]">Registrar - {formMunicipio} {pontoSelecionadoMapa?"(local fixado)":"(clique no mapa para fixar)"}</button>
           </form>
         </section>
 
-        {/* MEIO - MAPA / MURAL / NOTICIAS / HISTORICO */}
         <section className="h-[80vh] md:h-[calc(100vh-140px)] rounded-2xl overflow-hidden border relative bg-gray-100 flex flex-col">
           <div className="bg-white border-b flex flex-col items-center justify-center py-3 z-[400] shadow-sm"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-black">GC</div><div className="text-center"><div className="font-black tracking-[0.25em] text-[15px]">GEOCLIMA VALE</div><div className="text-[10px] opacity-60">39 municípios • UNIVESP • Zoom 15</div></div></div></div>
           <div className="relative flex-1 overflow-hidden bg-[#f8fafc]">
-            <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /><div className="absolute top-3 left-1/2 -translate-x-1/2 z-[400] bg-black text-white px-4 py-1 rounded-full text-[11px] font-black">MAPA DE MONITORAMENTO DE OCORRÊNCIA</div><div className="absolute top-12 left-3 z-[400] bg-white/90 px-3 py-1 rounded-full text-[10px] font-bold shadow">📍 {filtrados.length} aprovados • 🔺 Hover mostra foto • Zoom 15 (um pouco mais longe)</div></div>
+            <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /></div>
             {viewMode==="mural" && <div className="absolute inset-0 overflow-auto p-3 space-y-4"><div className="max-w-[500px] mx-auto space-y-4">{filtrados.map(p=><div key={p.id} className="bg-white border rounded-[20px] overflow-hidden shadow-sm">{p.foto && <img src={p.foto} className="w-full h-[260px] object-cover" onError={e=>{(e.target as any).style.display='none'}}/>}<div className="p-3"><div className="font-black text-[13px]">📍 {p.municipio} - {p.bairro}</div><div className="text-[11px] opacity-70">{p.rua} • {p.quando} • {p.statusRua}</div><div className="bg-gray-50 border rounded-xl p-2 mt-2 text-[12px]"><b>Descrição:</b> {p.obs || "Sem descrição"}</div><div className="flex gap-2 mt-3"><button className="flex-1 bg-gray-900 text-white py-2 rounded-full text-[11px] font-bold">👍 Vi também ({p.qtd})</button><button onClick={()=> compartilhar(p)} className="px-4 bg-blue-600 text-white py-2 rounded-full text-[11px]">📤 Compartilhar</button></div></div></div>)}</div></div>}
-            {viewMode==="noticias" && <div className="absolute inset-0 overflow-auto p-4 space-y-3">{noticiasOficiais.map((n,i)=><div key={i} className="bg-white border rounded-2xl p-4 flex gap-3"><div className={`w-10 h-10 ${n.cor} rounded-full flex items-center justify-center text-white font-black text-[10px]`}>{n.fonte.slice(0,2)}</div><div><div className="font-black text-[13px]">{n.titulo}</div><div className="text-[11px] opacity-70 mt-1">{n.desc}</div></div></div>)}</div>}
+            {viewMode==="noticias" && <div className="absolute inset-0 overflow-auto p-4 space-y-3">{noticiasOficiais.map((n,i)=><div key={i} className="bg-white border rounded-2xl p-4 flex gap-3"><div className={`w-10 h-10 ${n.cor} rounded-full flex items-center justify-center text-white font-black text-[10px]`}>{n.fonte.slice(0,2)}</div><div className="flex-1"><div className="flex justify-between gap-2"><div className="font-black text-[13px] flex-1">{n.titulo}</div><span className="text-[10px] bg-gray-100 border px-2 py-1 rounded-full font-bold whitespace-nowrap">{n.data} • {n.hora}</span></div><div className="text-[11px] opacity-70 mt-1">{n.desc}</div><div className="text-[10px] opacity-60 mt-2 flex gap-2 items-center"><span className="bg-black text-white px-2 py-0.5 rounded-full text-[9px]">{n.dataHora}</span><span>{n.time}</span><span>•</span><span>{n.fonte}</span></div></div></div>)}</div>}
             {viewMode==="historico" && <div className="absolute inset-0 overflow-auto p-4 space-y-4 bg-white">
               <h3 className="font-black text-[14px]">🔥 HISTÓRICO DE OCORRÊNCIAS - LOCAIS CRÍTICOS (90d)</h3>
               <p className="text-[11px] opacity-60">Ranking de ruas que mais alagaram/deslizaram nos últimos 90 dias - dados para Defesa Civil</p>
-              <div className="space-y-2">{locaisCriticos.map(([chave, {count, ponto}], i)=><div key={chave} onClick={()=> { setViewMode("mapa"); setTimeout(()=> mapRef.current?.setView([ponto.lat, ponto.lng], 15), 100)}} className="flex items-center gap-3 bg-[#f8fafc] border p-3 rounded-xl cursor-pointer hover:border-black"><div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-[12px] ${count>6?"bg-red-600":count>2?"bg-orange-500":"bg-yellow-500"}`}>{i+1}</div><div className="flex-1"><div className="font-bold text-[12px]">{chave}</div><div className="text-[10px] opacity-60">{ponto.bairro} • {ponto.tipo.simples} • Último: {ponto.quando}</div><div className="text-[11px] mt-1 bg-white border rounded-lg p-2">{ponto.obs || "Sem descrição"}</div></div><div className="text-right"><div className={`text-[11px] px-3 py-1 rounded-full font-black text-white ${count>6?"bg-red-600":count>2?"bg-orange-500":"bg-yellow-500"}`}>{count}x</div><div className="text-[9px] opacity-60 mt-1">{ponto.freq}</div></div></div>)}</div>
+              <div className="space-y-2">{locaisCriticos.map(([chave, {count, ponto}], i)=><div key={chave} onClick={()=> { setViewMode("mapa"); setAutoCarrossel(false); setTimeout(()=> mapRef.current?.setView([ponto.lat, ponto.lng], 15), 100)}} className="flex items-center gap-3 bg-[#f8fafc] border p-3 rounded-xl cursor-pointer hover:border-black"><div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-white text-[12px] ${count>6?"bg-red-600":count>2?"bg-orange-500":"bg-yellow-500"}`}>{i+1}</div><div className="flex-1"><div className="font-bold text-[12px]">{chave}</div><div className="text-[10px] opacity-60">{ponto.bairro} • {ponto.tipo.simples} • Último: {ponto.quando}</div><div className="text-[11px] mt-1 bg-white border rounded-lg p-2">{ponto.obs || "Sem descrição"}</div></div><div className="text-right"><div className={`text-[11px] px-3 py-1 rounded-full font-black text-white ${count>6?"bg-red-600":count>2?"bg-orange-500":"bg-yellow-500"}`}>{count}x</div><div className="text-[9px] opacity-60 mt-1">{ponto.freq}</div></div></div>)}</div>
               <div className="bg-[#0f172a] text-white rounded-xl p-4"><div className="font-black text-[11px]">📊 ESTATÍSTICAS 90d</div><div className="grid grid-cols-3 gap-3 mt-3"><div className="bg-white/10 rounded-xl p-3 text-center"><div className="text-2xl font-black">{pontos.length}</div><div className="text-[10px] opacity-60">Total aprovados</div></div><div className="bg-red-500/20 rounded-xl p-3 text-center border border-red-500/30"><div className="text-2xl font-black text-red-400">{pontos.filter(p=>p.tipo.risco==="crítico").length}</div><div className="text-[10px] text-red-300">Críticos 🔴</div></div><div className="bg-white rounded-xl p-3 text-center text-black"><div className="text-2xl font-black">{pontos.filter(p=>p.foto).length}</div><div className="text-[10px] font-bold">Com foto</div></div></div></div>
             </div>}
           </div>
         </section>
 
-        {/* DIREITA - AGORA COM DESCRIÇÃO */}
         <section className="space-y-3 hidden md:block">
           <div className="bg-white border rounded-2xl p-3">
             <h3 className="font-black text-[11px]">OCORRÊNCIAS COM FOTOS - APROVADOS - COM DESCRIÇÃO</h3>
             <div className="mt-2 space-y-3 max-h-[70vh] overflow-auto">
-              {filtrados.map(p=><div key={p.id} onClick={()=> { setViewMode("mapa"); setTimeout(()=> mapRef.current?.setView([p.lat, p.lng], 15), 100)}} className="border rounded-2xl p-3 cursor-pointer hover:border-black bg-white">
+              {filtrados.map(p=><div key={p.id} onClick={()=> { setViewMode("mapa"); setAutoCarrossel(false); setTimeout(()=> mapRef.current?.setView([p.lat, p.lng], 15), 100)}} className="border rounded-2xl p-3 cursor-pointer hover:border-black bg-white">
                 <div className="flex justify-between items-start gap-2"><div className="font-black text-[11px]">{p.municipio} - {p.rua}</div><span className={`text-[8px] px-2 py-1 rounded-full font-black h-fit ${p.statusRua==="Interditada"?"bg-red-600 text-white":"bg-orange-500 text-white"}`}>{p.statusRua}</span></div>
                 <div className="text-[10px] opacity-60">{p.bairro} • {p.quando} • {p.qtd} conf • {p.tipo.risco}</div>
                 {p.foto && <img src={p.foto} className="w-full h-28 object-cover rounded-xl mt-2" onError={e=>{(e.target as any).style.display='none'}}/>}
@@ -167,10 +194,10 @@ export default function App() {
 
       <nav className="fixed bottom-0 left-0 right-0 z-[5000] bg-white/95 backdrop-blur border-t shadow-[0_-4px_20px_rgba(0,0,0,0.1)] md:bottom-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:rounded-full md:border md:px-2 md:py-1">
         <div className="flex justify-center gap-1 py-2 md:py-1">
-          <button onClick={()=>setViewMode("mapa")} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="mapa"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">🗺️</span><span className="text-[11px] font-bold">Mapa</span></button>
-          <button onClick={()=>setViewMode("mural")} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="mural"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">🎞️</span><span className="text-[11px] font-bold">Mural</span></button>
-          <button onClick={()=>setViewMode("noticias")} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="noticias"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">📰</span><span className="text-[11px] font-bold">Notícias</span></button>
-          <button onClick={()=>setViewMode("historico")} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="historico"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">📊</span><span className="text-[11px] font-bold">Histórico</span></button>
+          <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); }} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="mapa"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">🗺️</span><span className="text-[11px] font-bold">Mapa</span></button>
+          <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="mural"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">🎞️</span><span className="text-[11px] font-bold">Mural</span></button>
+          <button onClick={()=>{ setViewMode("noticias"); setAutoCarrossel(false); }} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="noticias"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">📰</span><span className="text-[11px] font-bold">Notícias</span></button>
+          <button onClick={()=>{ setViewMode("historico"); setAutoCarrossel(false); }} className={`flex flex-col md:flex-row items-center gap-1 px-5 py-1.5 rounded-full transition-all ${viewMode==="historico"?"bg-black text-white shadow-lg":"text-gray-500"}`}><span className="text-[18px]">📊</span><span className="text-[11px] font-bold">Histórico</span></button>
         </div>
       </nav>
 
@@ -178,4 +205,17 @@ export default function App() {
       {showAcess && <div className="fixed inset-0 z-[9998] bg-black/30 flex justify-end"><div className="bg-[#f5f5f5] w-[92%] max-w-[380px] h-full ml-auto shadow-2xl border-l"><div className="p-4 flex justify-between items-center border-b bg-white"><div className="font-black">Acessibilidade</div><button onClick={()=>setShowAcess(false)} className="w-8 h-8 rounded-full bg-gray-100">✕</button></div><div className="p-4 grid grid-cols-2 gap-3"><button onClick={()=>setFonteGrande(!fonteGrande)} className="bg-white border p-4 rounded-2xl text-left"><div className="text-2xl font-black">A+</div><div className="text-[12px] font-bold">Fonte</div></button><button onClick={()=>setAltoContraste(!altoContraste)} className="bg-white border p-4 rounded-2xl text-left"><div>◐</div><div className="text-[12px] font-bold">Contraste</div></button></div></div></div>}
     </div>
   );
+}
+
+export default function App(){
+  const [rota, setRota] = useState(window.location.pathname);
+  useEffect(()=>{
+    const onPop = ()=> setRota(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return ()=> window.removeEventListener('popstate', onPop);
+  }, []);
+  if(rota.includes('/painel')){
+    return <Painel />;
+  }
+  return <UsuarioView />;
 }
