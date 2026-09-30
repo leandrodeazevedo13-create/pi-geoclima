@@ -4,7 +4,6 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { db } from "./lib/firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
-import Painel from "./Painel";
 
 type ViewMode = "mapa" | "mural" | "noticias" | "historico";
 type Tipo = { simples: string; tecnico: string; emoji: string; categoria: string; risco: "atenção" | "cuidado" | "crítico"; };
@@ -141,7 +140,7 @@ function UsuarioView(){
       <div className="bg-red-600 text-white font-bold overflow-hidden" style={{height:'32px'}}><style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}.animate-marquee{animation:marquee 30s linear infinite; white-space:nowrap; display:flex; gap:2rem; align-items:center; height:32px;}`}</style><div className="animate-marquee text-[12px]">{[...noticiasOficiais,...noticiasOficiais].map((n,i)=><span key={i} className="flex items-center gap-2"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[10px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora}</span>)}</div></div>
       
       <header className={`${altoContraste?"bg-black border-yellow-300 border-b":"bg-white border-b"} sticky top-0 z-40`}>
-        <div className="max-w-[1440px] mx-auto px-4 py-2 flex justify-between items-center"><div className="text-[10px] opacity-60">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua • {pontoSelecionadoMapa?`📍 Fixado: ${pontoSelecionadoMapa.lat.toFixed(4)}, ${pontoSelecionadoMapa.lng.toFixed(4)}`:"Clique no mapa para fixar local"}</div><div className="flex gap-2"><select value={municipioFiltro} onChange={e=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[12px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map(m=><option key={m}>{m}</option>)}</select><button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-4 py-1 rounded-full text-[12px] font-bold">Minha localização</button><button onClick={()=>{ window.history.pushState({},'', '/painel'); window.dispatchEvent(new Event('popstate')); }} className="bg-black text-white px-4 py-1 rounded-full text-[12px] font-bold hidden md:block">Painel ADM</button></div></div>
+        <div className="max-w-[1440px] mx-auto px-4 py-2 flex justify-between items-center"><div className="text-[10px] opacity-60">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua • {pontoSelecionadoMapa?`📍 Fixado: ${pontoSelecionadoMapa.lat.toFixed(4)}, ${pontoSelecionadoMapa.lng.toFixed(4)}`:"Clique no mapa para fixar local"}</div><div className="flex gap-2"><select value={municipioFiltro} onChange={e=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[12px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map(m=><option key={m}>{m}</option>)}</select><button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition(p=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-4 py-1 rounded-full text-[12px] font-bold">Minha localização</button><a href="/painel" className="bg-black text-white px-4 py-1 rounded-full text-[12px] font-bold hidden md:block">Painel ADM</a></div></div>
         <div className="flex gap-2 px-4 pb-2"><span className="px-4 py-1.5 rounded-full text-[12px] font-bold bg-black text-white">Mapa Colaborativo</span><span className="text-[10px] opacity-60 py-1.5">Morador - só aprovados com descrição {pontoSelecionadoMapa?"- 📍 Local fixado no mapa":"- clique no mapa para fixar"}</span></div>
       </header>
 
@@ -208,14 +207,5 @@ function UsuarioView(){
 }
 
 export default function App(){
-  const [rota, setRota] = useState(window.location.pathname);
-  useEffect(()=>{
-    const onPop = ()=> setRota(window.location.pathname);
-    window.addEventListener('popstate', onPop);
-    return ()=> window.removeEventListener('popstate', onPop);
-  }, []);
-  if(rota.includes('/painel')){
-    return <Painel />;
-  }
   return <UsuarioView />;
 }
