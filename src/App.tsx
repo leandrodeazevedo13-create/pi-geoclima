@@ -83,6 +83,53 @@ function UsuarioView(){
   const [ultimaAtualizacaoNoticias, setUltimaAtualizacaoNoticias] = useState<string>("");
   const isSemAlerta = useMemo(()=> noticiasOficiais.length>0 && noticiasOficiais.every((n:any)=> n.tipo==='sem_alerta' || n.titulo.toLowerCase().includes('monitoramento') || n.titulo.toLowerCase().includes('conectado')), [noticiasOficiais]);
   const [previsao, setPrevisao] = useState<any>(null);
+  const [notifPermissao, setNotifPermissao] = useState<NotificationPermission>("default");
+
+  // 🔔 NOTIFICAÇÃO - PEDE PERMISSÃO E ENVIA ALERTA
+  useEffect(()=>{
+    if("Notification" in window){
+      setNotifPermissao(Notification.permission);
+    }
+  },[]);
+  const solicitarNotificacao = async () => {
+    if(!("Notification" in window)){
+      alert("Seu navegador não suporta notificações");
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    setNotifPermissao(perm);
+    if(perm === "granted"){
+      try{
+        new Notification("✅ GeoClima Vale - Notificações ativadas", { 
+          body: "Você receberá alertas da Defesa Civil, CEMADEN, INMET e INPE no celular", 
+          icon: "https://pi-geoclima.vercel.app/vite.svg" 
+        });
+      }catch{}
+      alert("✅ Notificações ativadas! Você receberá alertas reais no celular");
+    } else {
+      alert("❌ Permissão negada. Ative nas configurações do navegador: Configurações > Notificações > Permitir pi-geoclima.vercel.app");
+    }
+  };
+  useEffect(()=>{
+    if(notifPermissao !== "granted" || noticiasOficiais.length===0) return;
+    const alertasReais = noticiasOficiais.filter((n:any)=> n.tipo !== 'sem_alerta' && !n.titulo.toLowerCase().includes('monitoramento') && !n.titulo.toLowerCase().includes('sem alerta') && !n.titulo.toLowerCase().includes('sistema online'));
+    if(alertasReais.length===0) return;
+    const ultimoId = localStorage.getItem("ultimoAlertaNotificado");
+    const novoAlerta = alertasReais[0];
+    if(novoAlerta.id !== ultimoId){
+      localStorage.setItem("ultimoAlertaNotificado", novoAlerta.id);
+      try{
+        const notif = new Notification(`🚨 ${novoAlerta.fonte}: ${novoAlerta.titulo.slice(0,70)}`, {
+          body: `${novoAlerta.desc.slice(0,120)} • ${novoAlerta.data} ${novoAlerta.hora}`,
+          icon: "https://pi-geoclima.vercel.app/vite.svg",
+          tag: novoAlerta.id,
+          requireInteraction: true
+        });
+        notif.onclick = () => { window.focus(); setViewMode("noticias"); };
+      }catch{}
+      if("vibrate" in navigator) try{ navigator.vibrate([300,100,300,100,500]); }catch{}
+    }
+  }, [noticiasOficiais, notifPermissao]);
   const [previsaoIdx, setPrevisaoIdx] = useState(0);
 
   // REVERSE GEOCODING - FIXA ENDEREÇO AUTOMÁTICO AO CLICAR NO MAPA
@@ -348,8 +395,14 @@ function UsuarioView(){
       <header className="bg-white border-b sticky top-0 z-40">
         <div className="max-w-[1440px] mx-auto px-4 py-1.5 flex justify-between items-center">
           <div className="text-[9px] opacity-60 hidden md:block">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua</div>
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2 ml-auto items-center">
             <select value={municipioFiltro} onChange={(e:any)=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[11px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map((m:any)=><option key={m}>{m}</option>)}</select>
+            {notifPermissao !== "granted" && (
+              <button onClick={solicitarNotificacao} className="bg-amber-500 text-white px-3 py-1 rounded-full text-[11px] font-bold animate-pulse">🔔 Ativar alertas</button>
+            )}
+            {notifPermissao === "granted" && (
+              <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[11px] font-bold">🔔 Alertas ON</span>
+            )}
             <button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition((p:any)=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-3 py-1 rounded-full text-[11px] font-bold">Minha localização</button>
             <a href="/painel" className="bg-black text-white px-3 py-1 rounded-full text-[11px] font-bold">Painel ADM</a>
           </div>
