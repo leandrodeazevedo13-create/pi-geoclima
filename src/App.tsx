@@ -344,7 +344,7 @@ function UsuarioView(){
           .leaflet-tile { image-rendering: -webkit-optimize-contrast; }
         }
       `}</style>
-      <div className="bg-red-600 text-white font-bold overflow-hidden w-full max-w-[100vw]" style={{height:'28px'}}><style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}} .animate-marquee{animation:marquee 30s linear infinite; white-space:nowrap; display:flex; gap:2rem; align-items:center; height:28px; width:max-content;} .animate-marquee:hover{animation-play-state:paused;}`}</style><div className="animate-marquee text-[11px] will-change-transform">{[...noticiasOficiais,...noticiasOficiais].map((n:any,i:any)=><span key={i} className="flex items-center gap-2 shrink-0"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[9px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora}</span>)}</div></div>
+      <div className="bg-red-600 text-white font-bold overflow-hidden w-full max-w-[100vw] relative" style={{height:'28px'}}><style>{`@keyframes marqueeSlow{0%{transform:translateX(0)}100%{transform:translateX(-50%)}} .animate-marquee{animation:marqueeSlow 90s linear infinite; white-space:nowrap; display:flex; gap:3rem; align-items:center; height:28px; width:max-content;} .animate-marquee:hover{animation-play-state:paused;}`}</style><div className="animate-marquee text-[11px]"><span className="flex items-center gap-2">{noticiasOficiais.map((n:any,i:any)=><span key={i} className="flex items-center gap-2 shrink-0"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[9px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora} •</span>)}</span><span className="flex items-center gap-2">{noticiasOficiais.map((n:any,i:any)=><span key={`dup-${i}`} className="flex items-center gap-2 shrink-0"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[9px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora} •</span>)}</span></div></div>
       <header className="bg-white border-b sticky top-0 z-40">
         <div className="max-w-[1440px] mx-auto px-4 py-1.5 flex justify-between items-center">
           <div className="text-[9px] opacity-60 hidden md:block">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua</div>
@@ -388,10 +388,10 @@ function UsuarioView(){
           )}
         </div>
       </header>
-      <main className="grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[1440px] mx-auto">
+      <main className="flex flex-col md:grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[100vw] md:max-w-[1440px] mx-auto pb-[100px] md:pb-2.5 w-full overflow-x-hidden">
         <section className="bg-white border rounded-2xl p-3 h-fit sticky top-[88px] hidden md:block shadow-sm">{FormContent}</section>
-        {showFormMobile && (<section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm">{FormContent}</section>)}
-        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm">
+        <section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm order-last mt-2.5">{FormContent}</section>
+        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm order-first md:order-none">
           <div className="bg-white border-b flex flex-col items-center justify-center py-2 z-[400] shrink-0"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-black text-white rounded-lg flex items-center justify-center font-black text-[10px]">GC</div><div className="text-center"><div className="font-black tracking-[0.2em] text-[11px]">GEOCLIMA VALE</div><div className="text-[8px] opacity-60">39 municípios • UNIVESP • Zoom 15</div></div></div></div>
           <div className="relative flex-1 overflow-hidden bg-[#f8fafc]">
             <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /></div>
@@ -418,12 +418,12 @@ function UsuarioView(){
           </div>
         </section>
       </main>
-      <nav className="fixed bottom-2 left-0 right-0 z-[5000] flex justify-center px-2">
-        <div className="bg-white/95 backdrop-blur border shadow rounded-full px-2 py-1 flex gap-1">
-          <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="mapa"?"bg-black text-white":"text-gray-500"}`}><span>🗺</span><span className="text-[10px] font-bold">Mapa</span></button>
-          <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="mural"?"bg-black text-white":"text-gray-500"}`}><span>🎞</span><span className="text-[10px] font-bold">Mural</span></button>
-          <button onClick={()=>{ setViewMode("noticias"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="noticias"?"bg-black text-white":"text-gray-500"}`}><span>📰</span><span className="text-[10px] font-bold">Notícias</span></button>
-          <button onClick={()=>{ setViewMode("historico"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="historico"?"bg-black text-white":"text-gray-500"}`}><span>📊</span><span className="text-[10px] font-bold">Histórico</span></button>
+            <nav className="fixed bottom-4 left-0 right-0 z-[5000] flex justify-center px-3 pointer-events-none">
+        <div className="pointer-events-auto bg-white border border-gray-200 shadow-[0_10px_40px_rgba(0,0,0,0.2)] rounded-full px-2.5 py-2 flex gap-1.5">
+          <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); window.scrollTo({top:0, behavior:'smooth'}); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="mapa"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>🗺</span>Mapa</button>
+          <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="mural"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>🎞</span>Mural</button>
+          <button onClick={()=>{ setViewMode("noticias"); setAutoCarrossel(false); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="noticias"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>📰</span>Notícias</button>
+          <button onClick={()=>{ setViewMode("historico"); setAutoCarrossel(false); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="historico"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>📊</span>Histórico</button>
         </div>
       </nav>
     </div>
