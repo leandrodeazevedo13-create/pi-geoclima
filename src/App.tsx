@@ -84,50 +84,62 @@ function UsuarioView(){
   const isSemAlerta = useMemo(()=> noticiasOficiais.length>0 && noticiasOficiais.every((n:any)=> n.tipo==='sem_alerta' || n.titulo.toLowerCase().includes('monitoramento') || n.titulo.toLowerCase().includes('conectado')), [noticiasOficiais]);
   const [previsao, setPrevisao] = useState<any>(null);
   const [notifPermissao, setNotifPermissao] = useState<NotificationPermission>("default");
+  const [isPWAInstalavel, setIsPWAInstalavel] = useState(false);
+  const [promptInstalacao, setPromptInstalacao] = useState<any>(null);
 
-  // 🔔 NOTIFICAÇÃO - PEDE PERMISSÃO E ENVIA ALERTA
   useEffect(()=>{
-    if("Notification" in window){
-      setNotifPermissao(Notification.permission);
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/service-worker.js').then(r=>console.log('PWA SW', r.scope)).catch(()=> navigator.serviceWorker.register('/sw.js').catch(()=>{}));
     }
+    const handler = (e:any)=>{ e.preventDefault(); setPromptInstalacao(e); setIsPWAInstalavel(true); };
+    window.addEventListener('beforeinstallprompt', handler);
+    // Add manifest dynamically if not exists
+    if(!document.querySelector('link[rel="manifest"]')){
+      const link = document.createElement('link'); link.rel='manifest'; link.href='/manifest.json'; document.head.appendChild(link);
+      const meta = document.createElement('meta'); meta.name='theme-color'; meta.content='#000000'; document.head.appendChild(meta);
+    }
+    return ()=> window.removeEventListener('beforeinstallprompt', handler);
   },[]);
+  const instalarPWA = async () => {
+    if(promptInstalacao){ promptInstalacao.prompt(); const { outcome } = await promptInstalacao.userChoice; if(outcome==='accepted') setIsPWAInstalavel(false); }
+    else alert('No celular: Chrome > Menu (3 pontos) > Adicionar à tela inicial / Instalar app');
+  };
+  useEffect(()=>{ if("Notification" in window) setNotifPermissao(Notification.permission); },[]);
   const solicitarNotificacao = async () => {
-    if(!("Notification" in window)){
-      alert("Seu navegador não suporta notificações");
-      return;
-    }
+    if(!("Notification" in window)){ alert("Navegador não suporta notificações"); return; }
     const perm = await Notification.requestPermission();
     setNotifPermissao(perm);
-    if(perm === "granted"){
+    if(perm==="granted"){
       try{
-        new Notification("✅ GeoClima Vale - Notificações ativadas", { 
-          body: "Você receberá alertas da Defesa Civil, CEMADEN, INMET e INPE no celular", 
-          icon: "https://pi-geoclima.vercel.app/vite.svg" 
-        });
+        if('serviceWorker' in navigator){
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification("✅ GeoClima Vale - Notificações ativadas", { body: "Você receberá alertas da Defesa Civil, CEMADEN, INMET e INPE mesmo com app fechado!", icon: "https://cdn-icons-png.flaticon.com/512/1146/1146869.png", tag: "ativacao", requireInteraction: true } as any);
+        } else {
+          new Notification("✅ GeoClima Vale - Notificações ativadas", { body: "Alertas ativados!" } as any);
+        }
       }catch{}
-      alert("✅ Notificações ativadas! Você receberá alertas reais no celular");
-    } else {
-      alert("❌ Permissão negada. Ative nas configurações do navegador: Configurações > Notificações > Permitir pi-geoclima.vercel.app");
-    }
+      alert("✅ Notificações ativadas! Mesmo com app fechado você recebe alertas reais!");
+    } else alert("❌ Permissão negada. Ative em Configurações > Notificações > Permitir pi-geoclima.vercel.app");
   };
   useEffect(()=>{
-    if(notifPermissao !== "granted" || noticiasOficiais.length===0) return;
-    const alertasReais = noticiasOficiais.filter((n:any)=> n.tipo !== 'sem_alerta' && !n.titulo.toLowerCase().includes('monitoramento') && !n.titulo.toLowerCase().includes('sem alerta') && !n.titulo.toLowerCase().includes('sistema online'));
+    if(notifPermissao!=="granted" || noticiasOficiais.length===0) return;
+    const alertasReais = noticiasOficiais.filter((n:any)=> n.tipo!=='sem_alerta' && !n.titulo.toLowerCase().includes('monitoramento') && !n.titulo.toLowerCase().includes('sem alerta') && !n.titulo.toLowerCase().includes('sistema online'));
     if(alertasReais.length===0) return;
     const ultimoId = localStorage.getItem("ultimoAlertaNotificado");
     const novoAlerta = alertasReais[0];
-    if(novoAlerta.id !== ultimoId){
+    if(novoAlerta.id!==ultimoId){
       localStorage.setItem("ultimoAlertaNotificado", novoAlerta.id);
-      try{
-        const notif = new Notification(`🚨 ${novoAlerta.fonte}: ${novoAlerta.titulo.slice(0,70)}`, {
-          body: `${novoAlerta.desc.slice(0,120)} • ${novoAlerta.data} ${novoAlerta.hora}`,
-          icon: "https://pi-geoclima.vercel.app/vite.svg",
-          tag: novoAlerta.id,
-          requireInteraction: true
-        });
-        notif.onclick = () => { window.focus(); setViewMode("noticias"); };
-      }catch{}
-      if("vibrate" in navigator) try{ navigator.vibrate([300,100,300,100,500]); }catch{}
+      (async()=>{
+        try{
+          if('serviceWorker' in navigator){
+            const reg = await navigator.serviceWorker.ready;
+            await reg.showNotification(`🚨 ${novoAlerta.fonte}: ${novoAlerta.titulo.slice(0,60)}`, { body: `${novoAlerta.desc.slice(0,120)} • ${novoAlerta.data} ${novoAlerta.hora} - Toque para ver no mapa`, icon: "https://cdn-icons-png.flaticon.com/512/1146/1146869.png", badge: "https://cdn-icons-png.flaticon.com/512/1146/1146869.png", tag: novoAlerta.id, requireInteraction: true, vibrate: [300,100,300,100,500] } as any);
+          } else {
+            new Notification(`🚨 ${novoAlerta.fonte}`, { body: novoAlerta.titulo } as any);
+          }
+        }catch{ try{ new Notification(`🚨 ${novoAlerta.fonte}`, { body: novoAlerta.titulo } as any); }catch{} }
+        if("vibrate" in navigator) try{ navigator.vibrate([300,100,300,100,500]); }catch{}
+      })();
     }
   }, [noticiasOficiais, notifPermissao]);
   const [previsaoIdx, setPrevisaoIdx] = useState(0);
@@ -378,14 +390,12 @@ function UsuarioView(){
     </>
   );
   return (
-    <div className="bg-[#f8fafc] text-slate-900 min-h-screen font-sans pb-[90px] w-full max-w-[100vw] overflow-x-hidden">
+    <div className="bg-[#f8fafc] text-slate-900 min-h-screen font-sans pb-[100px] w-full max-w-[100vw] overflow-x-hidden">
       <style>{` 
-        html, body { overflow-x: hidden !important; max-width: 100vw !important; }
-        .custom-hover-tooltip { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15); } 
+        html, body { overflow-x: hidden !important; max-width: 100vw !important; } *{box-sizing:border-box;} .custom-hover-tooltip { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15); } 
         .custom-hover-tooltip .leaflet-tooltip-content { margin: 0; }
         .leaflet-container { background: #e5e7eb !important; }
-        /* FIX OVERFLOW LATERAL - SEM ARRASTAR PRO LADO NO MOBILE */
-        * { box-sizing: border-box; }
+        /* Mobile fix - mapa usável */
         @media (max-width: 768px) {
           .leaflet-control-zoom { display: flex !important; flex-direction: column; }
           .leaflet-tile { image-rendering: -webkit-optimize-contrast; }
@@ -395,14 +405,10 @@ function UsuarioView(){
       <header className="bg-white border-b sticky top-0 z-40">
         <div className="max-w-[1440px] mx-auto px-4 py-1.5 flex justify-between items-center">
           <div className="text-[9px] opacity-60 hidden md:block">Vale do Paraíba e Litoral Norte • 39 municípios • UNIVESP • Só aprovados • Zoom 15 rua</div>
-          <div className="flex gap-2 ml-auto items-center">
+          <div className="flex gap-2 ml-auto items-center flex-wrap justify-end">
             <select value={municipioFiltro} onChange={(e:any)=>setMunicipioFiltro(e.target.value)} className="border rounded-full px-3 py-1 text-[11px] bg-white text-black"><option>Todos - 39 ({pontos.length})</option>{MUNICIPIOS_RMVALE.map((m:any)=><option key={m}>{m}</option>)}</select>
-            {notifPermissao !== "granted" && (
-              <button onClick={solicitarNotificacao} className="bg-amber-500 text-white px-3 py-1 rounded-full text-[11px] font-bold animate-pulse">🔔 Ativar alertas</button>
-            )}
-            {notifPermissao === "granted" && (
-              <span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[11px] font-bold">🔔 Alertas ON</span>
-            )}
+            {isPWAInstalavel && (<button onClick={instalarPWA} className="bg-purple-600 text-white px-3 py-1 rounded-full text-[11px] font-bold">📲 Instalar App</button>)}
+            {notifPermissao !== "granted" ? (<button onClick={solicitarNotificacao} className="bg-amber-500 text-white px-3 py-1 rounded-full text-[11px] font-bold animate-pulse">🔔 Ativar alertas</button>) : (<span className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[11px] font-bold">🔔 Alertas ON</span>)}
             <button onClick={()=>{ if(navigator.geolocation) navigator.geolocation.getCurrentPosition((p:any)=> mapRef.current?.setView([p.coords.latitude, p.coords.longitude], 15))}} className="bg-blue-600 text-white px-3 py-1 rounded-full text-[11px] font-bold">Minha localização</button>
             <a href="/painel" className="bg-black text-white px-3 py-1 rounded-full text-[11px] font-bold">Painel ADM</a>
           </div>
@@ -444,7 +450,7 @@ function UsuarioView(){
       <main className="flex flex-col md:grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[100vw] md:max-w-[1440px] mx-auto pb-[100px] md:pb-2.5 w-full overflow-x-hidden">
         <section className="bg-white border rounded-2xl p-3 h-fit sticky top-[88px] hidden md:block shadow-sm">{FormContent}</section>
         <section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm order-last mt-2.5">{FormContent}</section>
-        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm order-first md:order-none">
+        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm">
           <div className="bg-white border-b flex flex-col items-center justify-center py-2 z-[400] shrink-0"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-black text-white rounded-lg flex items-center justify-center font-black text-[10px]">GC</div><div className="text-center"><div className="font-black tracking-[0.2em] text-[11px]">GEOCLIMA VALE</div><div className="text-[8px] opacity-60">39 municípios • UNIVESP • Zoom 15</div></div></div></div>
           <div className="relative flex-1 overflow-hidden bg-[#f8fafc]">
             <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /></div>
@@ -471,7 +477,7 @@ function UsuarioView(){
           </div>
         </section>
       </main>
-            <nav className="fixed bottom-4 left-0 right-0 z-[5000] flex justify-center px-3 pointer-events-none">
+      <nav className="fixed bottom-4 left-0 right-0 z-[5000] flex justify-center px-3 pointer-events-none">
         <div className="pointer-events-auto bg-white border border-gray-200 shadow-[0_10px_40px_rgba(0,0,0,0.2)] rounded-full px-2.5 py-2 flex gap-1.5">
           <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); window.scrollTo({top:0, behavior:'smooth'}); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="mapa"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>🗺</span>Mapa</button>
           <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[12px] font-bold transition-all ${viewMode==="mural"?"bg-black text-white shadow-md":"bg-gray-100 text-gray-600"}`}><span>🎞</span>Mural</button>
