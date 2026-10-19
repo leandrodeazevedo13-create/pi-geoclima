@@ -215,59 +215,49 @@ function UsuarioView(){
   }, [autoCarrossel]);
   useEffect(()=>{
     if(!mapContainerRef.current || mapRef.current) return;
-    // FIX ZOOM + QUADRADOS BRANCOS - MAPA NÍTIDO IGUAL VERCEL ON
     const map = L.map(mapContainerRef.current, { 
       center: [-23.4342,-45.0835], 
       zoom: 15, 
       zoomControl:true, 
-      preferCanvas: false,
-      zoomSnap: 1,
-      zoomDelta: 1,
-      wheelDebounceTime: 40
+      preferCanvas:false,
+      zoomSnap: 1
     });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { 
       attribution: "© OpenStreetMap", 
-      maxZoom: 19,
-      maxNativeZoom: 19,
-      minZoom: 5,
-      detectRetina: true,
-      tileSize: 256,
-      zoomOffset: 0
+      maxZoom:19, 
+      maxNativeZoom:19,
+      detectRetina:true,
+      tileSize: 256
     }).addTo(map);
     const group = L.layerGroup().addTo(map);
     const tempGroup = L.layerGroup().addTo(map);
     markersRef.current = group;
     tempLayerRef.current = tempGroup;
     mapRef.current = map;
-    // INVALIDATE SIZE MULTIPLO PRA NÃO FICAR QUADRADOS BRANCOS
-    setTimeout(()=> map.invalidateSize(), 50);
-    setTimeout(()=> map.invalidateSize(), 150);
+    setTimeout(()=> map.invalidateSize(), 100);
     setTimeout(()=> map.invalidateSize(), 300);
-    setTimeout(()=> map.invalidateSize(), 600);
-    setTimeout(()=> map.invalidateSize(), 1200);
+    setTimeout(()=> map.invalidateSize(), 800);
+    setTimeout(()=> map.invalidateSize(), 1500);
+    window.addEventListener('resize', ()=> { try{ map.invalidateSize(); }catch{} });
     map.on('click', (e:any)=>{
       const lat = e.latlng.lat;
       const lng = e.latlng.lng;
       setPontoSelecionadoMapa({lat, lng});
       setAutoCarrossel(false);
+      // LIMPA BOLINHA AZUL ANTERIOR - SÓ 1 POR VEZ
       if(tempLayerRef.current){ try{ tempLayerRef.current.clearLayers(); }catch{} }
       if(marcadorTemp && mapRef.current) { try{ mapRef.current.removeLayer(marcadorTemp); }catch{} }
       const icon = L.divIcon({ className:"temp-icon", html: `<div style="width:16px;height:16px;background:#0ea5e9;border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>`, iconSize:[16,16], iconAnchor:[8,8] });
       const m = L.marker([lat,lng], {icon}).addTo(tempLayerRef.current!);
       setMarcadorTemp(m as any);
       setShowFormMobile(true);
+      // NOVO - BUSCA ENDEREÇO AUTOMÁTICO
       buscarEnderecoAutomatico(lat, lng);
     });
     if(navigator.geolocation){ navigator.geolocation.getCurrentPosition((pos:any)=> map.setView([pos.coords.latitude, pos.coords.longitude], 15)); }
     return ()=>{ map.remove(); mapRef.current=null; markersRef.current=null; };
   }, []);
-  useEffect(()=>{ 
-    if(viewMode==="mapa" && mapRef.current){ 
-      setTimeout(()=>{ mapRef.current?.invalidateSize(); }, 50);
-      setTimeout(()=>{ mapRef.current?.invalidateSize(); }, 200);
-      setTimeout(()=>{ mapRef.current?.invalidateSize(); }, 500);
-    } 
-  }, [viewMode]);
+  useEffect(()=>{ if(viewMode==="mapa" && mapRef.current){ setTimeout(()=>{ mapRef.current?.invalidateSize(); }, 200); } }, [viewMode]);
   const filtrados = useMemo(()=> pontos.filter((p:any)=> municipioFiltro==="Todos - 39"||p.municipio===municipioFiltro), [pontos,municipioFiltro]);
   useEffect(()=>{
     if(!markersRef.current) return;
@@ -345,27 +335,12 @@ function UsuarioView(){
       <style>{` 
         .custom-hover-tooltip { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15); } 
         .custom-hover-tooltip .leaflet-tooltip-content { margin: 0; }
-        /* FIX QUADRADOS BRANCOS + LETRAS NÍTIDAS */
-        .leaflet-tile { 
-          image-rendering: -webkit-optimize-contrast !important; 
-          image-rendering: crisp-edges !important;
-          width: 256px !important;
-          height: 256px !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          border: none !important;
-          outline: none !important;
+        .leaflet-container { background: #e5e7eb !important; }
+        /* Mobile fix - mapa usável */
+        @media (max-width: 768px) {
+          .leaflet-control-zoom { display: flex !important; flex-direction: column; }
+          .leaflet-tile { image-rendering: -webkit-optimize-contrast; }
         }
-        .leaflet-tile-container img { 
-          width: 256px !important; 
-          height: 256px !important; 
-          margin: 0 !important;
-        }
-        .leaflet-container { 
-          background: #f8fafc !important; 
-          image-rendering: -webkit-optimize-contrast;
-        }
-        .leaflet-layer { image-rendering: -webkit-optimize-contrast; }
       `}</style>
       <div className="bg-red-600 text-white font-bold overflow-hidden" style={{height:'28px'}}><style>{`@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}} .animate-marquee{animation:marquee 30s linear infinite; white-space:nowrap; display:flex; gap:2rem; align-items:center; height:28px;} .animate-marquee:hover{animation-play-state:paused;}`}</style><div className="animate-marquee text-[11px]">{[...noticiasOficiais,...noticiasOficiais].map((n:any,i:any)=><span key={i} className="flex items-center gap-2"><span className={`${n.cor} px-2 py-0.5 rounded-full text-[9px]`}>{n.fonte}</span>{n.titulo} • {n.data} {n.hora}</span>)}</div></div>
       <header className="bg-white border-b sticky top-0 z-40">
@@ -414,7 +389,7 @@ function UsuarioView(){
       <main className="grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[1440px] mx-auto">
         <section className="bg-white border rounded-2xl p-3 h-fit sticky top-[88px] hidden md:block shadow-sm">{FormContent}</section>
         {showFormMobile && (<section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm">{FormContent}</section>)}
-        <section className="h-[80vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm">
+        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm">
           <div className="bg-white border-b flex flex-col items-center justify-center py-2 z-[400] shrink-0"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-black text-white rounded-lg flex items-center justify-center font-black text-[10px]">GC</div><div className="text-center"><div className="font-black tracking-[0.2em] text-[11px]">GEOCLIMA VALE</div><div className="text-[8px] opacity-60">39 municípios • UNIVESP • Zoom 15</div></div></div></div>
           <div className="relative flex-1 overflow-hidden bg-[#f8fafc]">
             <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /></div>
