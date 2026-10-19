@@ -386,10 +386,10 @@ function UsuarioView(){
           )}
         </div>
       </header>
-      <main className="grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[1440px] mx-auto">
+      <main className="flex flex-col md:grid md:grid-cols-[360px_1fr_340px] gap-2.5 p-2.5 max-w-[1440px] mx-auto pb-[80px] md:pb-2.5">
         <section className="bg-white border rounded-2xl p-3 h-fit sticky top-[88px] hidden md:block shadow-sm">{FormContent}</section>
-        {showFormMobile && (<section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm">{FormContent}</section>)}
-        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm">
+        <section className="md:hidden bg-white border rounded-2xl p-3 shadow-sm mt-2.5 order-last">{FormContent}</section>
+        <section className="h-[55vh] md:h-[calc(100vh-110px)] rounded-2xl overflow-hidden border relative bg-white flex flex-col shadow-sm order-first md:order-none">
           <div className="bg-white border-b flex flex-col items-center justify-center py-2 z-[400] shrink-0"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-black text-white rounded-lg flex items-center justify-center font-black text-[10px]">GC</div><div className="text-center"><div className="font-black tracking-[0.2em] text-[11px]">GEOCLIMA VALE</div><div className="text-[8px] opacity-60">39 municípios • UNIVESP • Zoom 15</div></div></div></div>
           <div className="relative flex-1 overflow-hidden bg-[#f8fafc]">
             <div className={`absolute inset-0 ${viewMode==="mapa"?"block":"hidden"}`}><div ref={mapContainerRef} className="absolute inset-0" /></div>
@@ -416,12 +416,12 @@ function UsuarioView(){
           </div>
         </section>
       </main>
-      <nav className="fixed bottom-2 left-0 right-0 z-[5000] flex justify-center px-2">
-        <div className="bg-white/95 backdrop-blur border shadow rounded-full px-2 py-1 flex gap-1">
-          <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="mapa"?"bg-black text-white":"text-gray-500"}`}><span>🗺</span><span className="text-[10px] font-bold">Mapa</span></button>
-          <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="mural"?"bg-black text-white":"text-gray-500"}`}><span>🎞</span><span className="text-[10px] font-bold">Mural</span></button>
-          <button onClick={()=>{ setViewMode("noticias"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="noticias"?"bg-black text-white":"text-gray-500"}`}><span>📰</span><span className="text-[10px] font-bold">Notícias</span></button>
-          <button onClick={()=>{ setViewMode("historico"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-4 py-1.5 rounded-full ${viewMode==="historico"?"bg-black text-white":"text-gray-500"}`}><span>📊</span><span className="text-[10px] font-bold">Histórico</span></button>
+      <nav className="fixed bottom-0 md:bottom-2 left-0 right-0 z-[5000] flex justify-center px-2 pb-2 md:pb-0 pt-2 bg-gradient-to-t from-white via-white to-transparent md:bg-transparent">
+        <div className="bg-white border shadow-[0_-4px_20px_rgba(0,0,0,0.15)] md:shadow rounded-full px-2 py-1.5 flex gap-1">
+          <button onClick={()=>{ setViewMode("mapa"); setAutoCarrossel(false); window.scrollTo({top:0, behavior:'smooth'}); }} className={`flex items-center gap-1 px-3 md:px-4 py-2 md:py-1.5 rounded-full transition-all ${viewMode==="mapa"?"bg-black text-white shadow":"bg-gray-100 md:bg-transparent text-gray-600"}`}><span>🗺</span><span className="text-[11px] md:text-[10px] font-bold">Mapa</span></button>
+          <button onClick={()=>{ setViewMode("mural"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-3 md:px-4 py-2 md:py-1.5 rounded-full transition-all ${viewMode==="mural"?"bg-black text-white shadow":"bg-gray-100 md:bg-transparent text-gray-600"}`}><span>🎞</span><span className="text-[11px] md:text-[10px] font-bold">Mural</span></button>
+          <button onClick={()=>{ setViewMode("noticias"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-3 md:px-4 py-2 md:py-1.5 rounded-full transition-all ${viewMode==="noticias"?"bg-black text-white shadow":"bg-gray-100 md:bg-transparent text-gray-600"}`}><span>📰</span><span className="text-[11px] md:text-[10px] font-bold">Notícias</span></button>
+          <button onClick={()=>{ setViewMode("historico"); setAutoCarrossel(false); }} className={`flex items-center gap-1 px-3 md:px-4 py-2 md:py-1.5 rounded-full transition-all ${viewMode==="historico"?"bg-black text-white shadow":"bg-gray-100 md:bg-transparent text-gray-600"}`}><span>📊</span><span className="text-[11px] md:text-[10px] font-bold">Histórico</span></button>
         </div>
       </nav>
     </div>
